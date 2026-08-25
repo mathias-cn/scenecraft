@@ -6,6 +6,8 @@ export const NAV_ITEMS = [
 export type NavHref = (typeof NAV_ITEMS)[number]["href"];
 
 export function titleForPath(pathname: string): string {
+  if (pathname === "/projects/new") return "Novo projeto";
+  if (pathname.startsWith("/projects/") && pathname !== "/projects") return "Projeto";
   const match = NAV_ITEMS.find(
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
