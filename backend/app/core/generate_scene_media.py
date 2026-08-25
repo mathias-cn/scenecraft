@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from decimal import Decimal
 from io import BytesIO
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.job_groups import check_job_group_complete
 from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.provider_limiter import provider_semaphore
-from app.core.state_machine import ProjectNotFound
-from app.models.enums import MediaType, SceneStatus
+from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
+from app.models.enums import MediaType, ProjectStage, SceneStatus
 from app.models.project import Project
 from app.models.scene import Scene
 from app.providers.image_provider import (
@@ -22,6 +24,46 @@ from app.providers.image_provider import (
     parse_image_provider,
 )
 
+_SCENE_DONE = frozenset({SceneStatus.READY, SceneStatus.COMPLETED})
+
+
+def _scene_done(scene: Any) -> bool:
+    status = getattr(scene, "status", None)
+    if status in _SCENE_DONE:
+        return True
+    return str(getattr(status, "value", status) or "") in {item.value for item in _SCENE_DONE}
+
+
+def maybe_finish_media_group(
+    session: Session,
+    project: Project,
+    scene: Scene,
+    job_group_id: UUID | str | None = None,
+) -> dict[str, Any]:
+    """Se todas as cenas terminaram, consulta o job group e avança GENERATING_MEDIA."""
+    scenes = list(getattr(project, "scenes", None) or []) or [scene]
+    scenes_complete = all(_scene_done(item) for item in scenes)
+    group_complete = None
+    if job_group_id is not None:
+        try:
+            group_complete = check_job_group_complete(project.id, job_group_id, db=session)
+        except Exception:
+            group_complete = None
+    advanced = False
+    current = getattr(project, "current_stage", None)
+    if scenes_complete and current is not None:
+        try:
+            if parse_stage(current) is ProjectStage.GENERATING_MEDIA:
+                advance_stage(project.id, ProjectStage.GENERATING_MEDIA, db=session)
+                advanced = True
+        except IllegalTransition:
+            pass
+    return {
+        "scenes_complete": scenes_complete,
+        "group_complete": group_complete,
+        "advanced": advanced,
+    }
+
 
 def generate_scene_media(
     project_id: str | UUID,
@@ -29,8 +71,9 @@ def generate_scene_media(
     db: Session | None = None,
     *,
     upload=None,
+    job_group_id: UUID | str | None = None,
 ) -> dict:
-    """Lê modelo e quality de `automation_config` (definidos na criação do projeto)."""
+    """Monta o prompt (visual_prompt + estilo), gera a imagem e marca a cena como ready."""
     session, owns = _session(db)
     try:
         scene = None
@@ -63,6 +106,11 @@ def generate_scene_media(
         session.flush()
 
         client = get_image_provider(provider_name)
+        generate_kwargs: dict[str, Any] = {"model": model}
+        if provider_name == "openai":
+            generate_kwargs["quality"] = quality
+            generate_kwargs["size"] = size
+
         reference_bytes = None
         if (
             provider_name == "openai"
@@ -74,9 +122,9 @@ def generate_scene_media(
             reference_bytes = fetch_image_bytes(character.base_image_url)
         with provider_semaphore.hold(provider_name):
             if provider_name == "openai" and reference_bytes and hasattr(client, "edit_image"):
-                result = client.edit_image(prompt, reference_bytes, model=model, quality=quality, size=size)
+                result = client.edit_image(prompt, reference_bytes, **generate_kwargs)
             else:
-                result = client.generate_image(prompt, model=model, quality=quality, size=size)
+                result = client.generate_image(prompt, **generate_kwargs)
 
         if upload is None:
             from app.storage import upload_fileobj as upload
@@ -91,9 +139,10 @@ def generate_scene_media(
         scene.media_url = url
         scene.media_type = MediaType.IMAGE
         scene.cost_usd = Decimal(str(result.cost_usd))
-        scene.status = SceneStatus.COMPLETED
+        scene.status = SceneStatus.READY
         scene.style = model
         session.flush()
+        group = maybe_finish_media_group(session, project, scene, job_group_id=job_group_id)
         if owns:
             session.commit()
         return {
@@ -103,6 +152,7 @@ def generate_scene_media(
             "model": model,
             "media_url": url,
             "cost_usd": float(result.cost_usd),
+            **group,
         }
     except Exception:
         if scene is not None and not owns:
@@ -115,7 +165,12 @@ def generate_scene_media(
             session.close()
 
 
-def generate_project_media(project_id: str | UUID, db: Session | None = None) -> dict:
+def generate_project_media(
+    project_id: str | UUID,
+    db: Session | None = None,
+    *,
+    job_group_id: UUID | str | None = None,
+) -> dict:
     """Gera todas as cenas do projeto (job único, sem scene_id no payload)."""
     session, owns = _session(db)
     try:
@@ -124,7 +179,10 @@ def generate_project_media(project_id: str | UUID, db: Session | None = None) ->
         if project is None:
             raise ProjectNotFound(str(pid))
         scenes = list(project.scenes)
-        results = [generate_scene_media(project.id, scene.id, db=session) for scene in scenes]
+        results = [
+            generate_scene_media(project.id, scene.id, db=session, job_group_id=job_group_id)
+            for scene in scenes
+        ]
         if owns:
             session.commit()
         return {"project_id": str(pid), "scenes": results, "count": len(results)}

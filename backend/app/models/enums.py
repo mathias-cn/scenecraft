@@ -44,6 +44,7 @@ class MediaType(str, enum.Enum):
 class SceneStatus(str, enum.Enum):
     PENDING = "pending"
     GENERATING = "generating"
+    READY = "ready"
     COMPLETED = "completed"
     FAILED = "failed"
 
