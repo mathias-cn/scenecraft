@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import logging
+import json
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any, Mapping, Sequence
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -18,8 +20,6 @@ from app.models.enums import MediaType, SceneStatus
 from app.models.project import Project
 from app.models.scene import Scene
 from app.providers.llm_client import plan_scenes
-
-logger = logging.getLogger(__name__)
 
 SCENE_PACING_MS: dict[str, tuple[int, int]] = {
     "short": (8_000, 15_000),
@@ -98,36 +98,71 @@ def close_scene_timeline(
         if int(scenes[index]["end_ms"]) <= int(scenes[index]["start_ms"]):
             scenes[index]["end_ms"] = int(scenes[index]["start_ms"]) + 1
     last = scenes[-1]
-    target = max(int(audio_duration_ms), int(last["end_ms"]), int(last["start_ms"]) + 1)
-    last["end_ms"] = target
+    last["end_ms"] = max(int(audio_duration_ms), int(last["start_ms"]) + 1)
     return scenes
 
 
+def ffprobe_duration_ms(path: str | Path) -> int:
+    """Duração real do arquivo em ms via `ffprobe -show_entries format=duration`."""
+    completed = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(path),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if completed.returncode != 0:
+        detail = (completed.stderr or "").strip() or str(completed.returncode)
+        raise ScenePlanningError(f"ffprobe falhou ao ler a duração do áudio: {detail}")
+    try:
+        payload = json.loads(completed.stdout)
+        raw = (payload.get("format") or {}).get("duration")
+        ms = int(round(float(raw) * 1000))
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+        raise ScenePlanningError("ffprobe não retornou duration válida") from exc
+    if ms <= 0:
+        raise ScenePlanningError("duração do áudio inválida")
+    return ms
+
+
+def _download_audio(url: str, local_path: str) -> Path:
+    from app.storage import download_file
+
+    return download_file(url, local_path)
+
+
 def measure_project_audio_duration_ms(project: Project) -> int | None:
-    """Duração do áudio original (ou final, se já existir). None se não der para medir."""
+    """Duração do arquivo de áudio do projeto via ffprobe. None se ainda não houver arquivo."""
     track = original_audio_track(project) or final_narration_track(project)
     url = (getattr(track, "file_url", None) or "").strip() if track is not None else ""
     if not url:
         return None
+    suffix = Path(urlparse(url).path).suffix or ".mp3"
     try:
-        from pydub import AudioSegment
-
-        from app.storage import download_file
-
         with tempfile.TemporaryDirectory(prefix="scenecraft-scene-dur-") as tmp:
-            path = download_file(url, str(Path(tmp) / "audio"))
-            return int(len(AudioSegment.from_file(str(path))))
-    except Exception:
-        logger.warning("não foi possível medir a duração do áudio do projeto %s", project.id)
-        return None
+            path = _download_audio(url, str(Path(tmp) / f"audio{suffix}"))
+            return ffprobe_duration_ms(path)
+    except ScenePlanningError:
+        raise
+    except Exception as exc:
+        raise ScenePlanningError(
+            f"não foi possível obter a duração real do áudio do projeto {project.id}"
+        ) from exc
 
 
 def project_audio_duration_ms(project: Project, segments: Sequence[Any]) -> int:
-    last_end = max(_ms(segment, "end_ms") for segment in segments)
     measured = measure_project_audio_duration_ms(project)
-    if measured is None or measured <= 0:
-        return last_end
-    return max(measured, last_end)
+    if measured is not None and measured > 0:
+        return measured
+    return max(_ms(segment, "end_ms") for segment in segments)
 
 
 def scenes_from_groups(

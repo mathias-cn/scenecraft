@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -6,7 +7,10 @@ import pytest
 from app.core.plan_scenes import (
     ScenePlanningError,
     close_scene_timeline,
+    ffprobe_duration_ms,
+    measure_project_audio_duration_ms,
     plan_project_scenes,
+    project_audio_duration_ms,
     scenes_from_groups,
     validate_segment_partition,
 )
@@ -132,6 +136,13 @@ def test_close_scene_timeline_fills_gaps_and_trailing_silence():
     assert closed[1]["end_ms"] == 5000
 
 
+def test_close_scene_timeline_last_scene_ends_exactly_at_file_duration():
+    scenes = [{"index": 0, "start_ms": 0, "end_ms": 4000, "source_segment_ids": [0]}]
+    assert close_scene_timeline(scenes, audio_duration_ms=5123)[0]["end_ms"] == 5123
+    scenes = [{"index": 0, "start_ms": 0, "end_ms": 4000, "source_segment_ids": [0]}]
+    assert close_scene_timeline(scenes, audio_duration_ms=3500)[0]["end_ms"] == 3500
+
+
 def test_scenes_from_groups_computes_times_from_segments():
     segments = [
         SimpleNamespace(index=0, start_ms=0, end_ms=1000),
@@ -188,6 +199,67 @@ def test_plan_project_scenes_closes_gaps_and_extends_last_scene(monkeypatch):
     assert second.start_ms == 2500
     assert second.end_ms == 5000
     assert second.source_segment_ids == [2]
+
+
+def test_ffprobe_duration_ms_parses_format_duration(monkeypatch, tmp_path):
+    audio = tmp_path / "clip.mp3"
+    audio.write_bytes(b"x")
+
+    def fake_run(cmd, **kwargs):
+        assert cmd[:7] == [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+        ]
+        assert cmd[7] == str(audio)
+        return SimpleNamespace(
+            returncode=0,
+            stdout='{"format":{"duration":"12.3456"}}',
+            stderr="",
+        )
+
+    monkeypatch.setattr("app.core.plan_scenes.subprocess.run", fake_run)
+    assert ffprobe_duration_ms(audio) == 12346
+
+
+def test_ffprobe_duration_ms_raises_on_failure(monkeypatch, tmp_path):
+    audio = tmp_path / "clip.mp3"
+    audio.write_bytes(b"x")
+    monkeypatch.setattr(
+        "app.core.plan_scenes.subprocess.run",
+        lambda *_a, **_k: SimpleNamespace(returncode=1, stdout="", stderr="no such file"),
+    )
+    with pytest.raises(ScenePlanningError, match="ffprobe falhou"):
+        ffprobe_duration_ms(audio)
+
+
+def test_project_audio_duration_uses_ffprobe_not_last_segment(monkeypatch):
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[])
+    segments = [SimpleNamespace(end_ms=4000)]
+    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda _p: 5123)
+    assert project_audio_duration_ms(project, segments) == 5123
+
+
+def test_measure_project_audio_duration_downloads_and_probes(monkeypatch):
+    project = SimpleNamespace(
+        id=uuid4(),
+        audio_tracks=[SimpleNamespace(source="original", file_url="s3://bucket/clip.mp3")],
+    )
+
+    def fake_download(url, local_path):
+        assert url == "s3://bucket/clip.mp3"
+        destination = Path(local_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"x")
+        return destination
+
+    monkeypatch.setattr("app.core.plan_scenes._download_audio", fake_download)
+    monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", lambda _path: 5123)
+    assert measure_project_audio_duration_ms(project) == 5123
 
 
 def test_celery_task_is_registered_with_project_id_signature():
