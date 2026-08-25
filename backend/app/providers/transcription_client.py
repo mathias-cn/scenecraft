@@ -30,6 +30,7 @@ class Segment:
     start_ms: int
     end_ms: int
     text: str
+    language: str = ""
 
 
 class TranscriptionProvider(ABC):
@@ -88,7 +89,15 @@ def pack_ranges(duration_ms: int, cut_points: list[int], max_ms: int) -> list[tu
     return ranges
 
 
+def _detected_language(payload: Any) -> str:
+    raw = str(_attr_or_key(payload, "language") or "").strip()
+    if not raw:
+        return ""
+    return language_param(raw) or raw
+
+
 def segments_from_verbose(payload: Any, offset_ms: int = 0) -> list[Segment]:
+    detected = _detected_language(payload)
     raw_segments = _attr_or_key(payload, "segments") or []
     out: list[Segment] = []
     for item in raw_segments:
@@ -102,6 +111,7 @@ def segments_from_verbose(payload: Any, offset_ms: int = 0) -> list[Segment]:
                 start_ms=seconds_to_ms(start) + offset_ms,
                 end_ms=seconds_to_ms(end) + offset_ms,
                 text=text,
+                language=detected,
             )
         )
     if out:
@@ -109,7 +119,7 @@ def segments_from_verbose(payload: Any, offset_ms: int = 0) -> list[Segment]:
     text = str(_attr_or_key(payload, "text") or "").strip()
     if not text:
         return []
-    return [Segment(start_ms=offset_ms, end_ms=offset_ms, text=text)]
+    return [Segment(start_ms=offset_ms, end_ms=offset_ms, text=text, language=detected)]
 
 
 def _attr_or_key(obj: Any, name: str) -> Any:

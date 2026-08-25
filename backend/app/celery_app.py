@@ -28,6 +28,7 @@ celery_app.conf.update(
     task_queues=tuple(Queue(name, exchange=exchange, routing_key=name) for name in QUEUE_NAMES),
     task_routes={
         "scenecraft.transcribe": {"queue": "transcribe"},
+        "scenecraft.transcribe_project": {"queue": "transcribe"},
         "scenecraft.scene_planning": {"queue": "scene_planning"},
         "scenecraft.media_gen": {"queue": "media_gen"},
         "scenecraft.audio_gen": {"queue": "audio_gen"},

@@ -48,9 +48,18 @@ def test_segments_from_verbose_converts_seconds_and_offset():
     assert segs == [Segment(start_ms=11250, end_ms=13500, text="olá")]
 
 
+def test_segments_from_verbose_keeps_detected_language():
+    payload = SimpleNamespace(
+        language="pt",
+        segments=[SimpleNamespace(start=0.0, end=1.0, text="oi")],
+    )
+    segs = segments_from_verbose(payload)
+    assert segs[0].language == "pt"
+
+
 def test_segments_from_verbose_dict_and_fallback_text():
-    segs = segments_from_verbose({"segments": [], "text": "inteiro"})
-    assert segs == [Segment(start_ms=0, end_ms=0, text="inteiro")]
+    segs = segments_from_verbose({"segments": [], "text": "inteiro", "language": "en"})
+    assert segs == [Segment(start_ms=0, end_ms=0, text="inteiro", language="en")]
 
 
 def test_cut_points_only_at_silence_boundaries():
