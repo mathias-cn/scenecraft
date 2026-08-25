@@ -100,6 +100,8 @@ def _detail_query(db, project_id: UUID) -> Project | None:
             selectinload(Project.video_assemblies),
             selectinload(Project.transcript_segments),
             selectinload(Project.jobs),
+            selectinload(Project.thumbnails),
+            selectinload(Project.descriptions),
         )
         .where(Project.id == project_id)
     ).first()

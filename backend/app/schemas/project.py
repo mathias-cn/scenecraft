@@ -137,12 +137,32 @@ class JobSummaryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ThumbnailRead(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    source: str
+    file_url: str
+
+    model_config = {"from_attributes": True}
+
+
+class DescriptionRead(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    text: str
+    source: str
+
+    model_config = {"from_attributes": True}
+
+
 class ProjectDetail(ProjectRead):
     scenes: list[SceneRead] = Field(default_factory=list)
     audio_tracks: list[AudioTrackRead] = Field(default_factory=list)
     video_assembly: VideoAssemblyRead | None = None
     transcript_segments: list[TranscriptSegmentRead] = Field(default_factory=list)
     jobs: list[JobSummaryRead] = Field(default_factory=list)
+    thumbnails: list[ThumbnailRead] = Field(default_factory=list)
+    descriptions: list[DescriptionRead] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def sort_nested(self):

@@ -73,10 +73,45 @@ export type VideoAssembly = {
   status: string;
 };
 
+export type TranscriptSegment = {
+  id: string;
+  index: number;
+  start_ms: number;
+  end_ms: number;
+  text_original: string;
+  text_translated: string | null;
+  language: string;
+};
+
+export type Thumbnail = {
+  id: string;
+  file_url: string;
+  source: string;
+};
+
+export type Description = {
+  id: string;
+  text: string;
+  source: string;
+};
+
+export type JobSummary = {
+  id: string;
+  job_type: string;
+  stage: ProjectStage;
+  status: string;
+  attempt_count: number;
+  error: string | null;
+};
+
 export type ProjectDetail = Project & {
   scenes: Scene[];
   audio_tracks: AudioTrack[];
+  transcript_segments: TranscriptSegment[];
   video_assembly: VideoAssembly | null;
+  thumbnails: Thumbnail[];
+  descriptions: Description[];
+  jobs: JobSummary[];
 };
 
 export type AdvanceResult = {
