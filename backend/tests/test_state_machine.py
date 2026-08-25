@@ -284,3 +284,50 @@ def test_retry_stage_redispatches_current_work_stage(monkeypatch):
     assert enqueued == ["media_gen"]
     assert result.dispatched_job_id is not None
     assert db.added[0].payload == {"scene": 1}
+
+
+def test_render_review_pauses_on_thumbnail_stage(monkeypatch):
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    project = _project(
+        current_stage=ProjectStage.RENDER_REVIEW,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
+    )
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.RENDER_REVIEW, db=db)
+    assert result.to_stage is ProjectStage.THUMBNAIL_STAGE
+    assert result.paused_for_review is True
+    assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
+    assert result.dispatched_job_id is None
+    assert db.added == []
+
+
+def test_auto_thumbnail_dispatches_thumbnail_job(monkeypatch):
+    enqueued = []
+    monkeypatch.setattr(
+        "app.core.state_machine.enqueue_job",
+        lambda step, job_id: enqueued.append(step.queue.value),
+    )
+    project = _project(
+        current_stage=ProjectStage.RENDER_REVIEW,
+        automation_config={"auto_thumbnail": True},
+    )
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.RENDER_REVIEW, db=db)
+    assert result.to_stage is ProjectStage.THUMBNAIL_STAGE
+    assert result.paused_for_review is False
+    assert result.auto_advanced is True
+    assert project.status is ProjectStatus.RUNNING
+    assert enqueued == ["thumbnail"]
+
+
+def test_cannot_leave_thumbnail_stage_without_file(monkeypatch):
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    project = _project(
+        current_stage=ProjectStage.THUMBNAIL_STAGE,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
+        thumbnails=[],
+    )
+    db = FakeDB(project)
+    with pytest.raises(IllegalTransition, match="thumbnail"):
+        advance_stage(project.id, ProjectStage.THUMBNAIL_STAGE, db=db)
+    assert project.current_stage is ProjectStage.THUMBNAIL_STAGE

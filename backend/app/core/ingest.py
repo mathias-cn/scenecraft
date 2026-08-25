@@ -11,6 +11,7 @@ from app.models.enums import SourceType
 
 VIDEO_SUFFIXES = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
 AUDIO_SUFFIXES = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".wma"}
+IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 class IngestError(ValueError):
@@ -45,6 +46,19 @@ def assert_audio_upload_filename(filename: str) -> None:
     suffix = Path(filename).suffix.lower()
     if suffix not in AUDIO_SUFFIXES:
         raise IngestError(f"arquivo de áudio inválido ({suffix or 'sem extensão'})")
+
+
+def sanitize_image_filename(filename: str | None) -> str:
+    name = Path(filename or "").name.strip()
+    if not name or name in {".", ".."}:
+        return "thumbnail.png"
+    return name.replace("\\", "_").replace("/", "_")
+
+
+def assert_image_upload_filename(filename: str) -> None:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in IMAGE_SUFFIXES:
+        raise IngestError(f"arquivo de imagem inválido ({suffix or 'sem extensão'})")
 
 
 def assert_upload_filename(filename: str, source_type: SourceType) -> None:

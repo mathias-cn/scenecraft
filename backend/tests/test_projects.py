@@ -7,6 +7,8 @@ from app.core.ingest import (
     parse_automation_config,
     resolve_source_ref,
     sanitize_filename,
+    assert_image_upload_filename,
+    sanitize_image_filename,
 )
 from app.models.enums import SourceType
 from app.schemas.project import ProjectCreate, ProjectDetail, ProjectRead
@@ -66,6 +68,10 @@ def test_filename_rules():
     assert_upload_filename("voice.wav", SourceType.UPLOAD_AUDIO)
     with pytest.raises(IngestError):
         assert_upload_filename("notes.txt", SourceType.UPLOAD_VIDEO)
+    assert sanitize_image_filename("cover.PNG") == "cover.PNG"
+    assert_image_upload_filename("thumb.webp")
+    with pytest.raises(IngestError, match="imagem"):
+        assert_image_upload_filename("notes.txt")
 
 
 def test_project_detail_sorts_scenes():

@@ -85,6 +85,16 @@ export function regenerateRender(id: string) {
   return apiPost<ProjectDetail>(`/api/projects/${id}/render/regenerate`);
 }
 
+export function generateProjectThumbnail(id: string) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/thumbnail/generate`);
+}
+
+export function uploadProjectThumbnail(id: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPost<ProjectDetail>(`/api/projects/${id}/thumbnail/upload`, form);
+}
+
 export function listStyles(active?: boolean) {
   const query = active === undefined ? "" : `?active=${active ? "true" : "false"}`;
   return apiGet<Style[]>(`/api/styles${query}`);

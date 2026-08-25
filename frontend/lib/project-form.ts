@@ -74,7 +74,7 @@ export const AUTOMATION_TOGGLES = [
   {
     key: "auto_thumbnail",
     label: "Thumbnail",
-    pause: "após thumbnail_stage",
+    pause: "thumbnail_stage",
   },
   {
     key: "auto_description",

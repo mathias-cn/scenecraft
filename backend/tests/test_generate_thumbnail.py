@@ -202,6 +202,103 @@ def test_generate_thumbnail_persists_via_session_add(monkeypatch):
     assert db.added[0].source is ThumbnailSource.GENERATED
 
 
+def test_generate_thumbnail_does_not_advance_when_paused(monkeypatch):
+    from app.models.enums import ProjectStatus
+
+    project = _project("openai", status=ProjectStatus.PAUSED_FOR_REVIEW)
+    monkeypatch.setattr(
+        "app.core.generate_thumbnail.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    advanced = []
+    monkeypatch.setattr(
+        "app.core.generate_thumbnail.advance_stage",
+        lambda *a, **k: advanced.append(True),
+    )
+    result = generate_thumbnail(
+        project.id,
+        db=FakeDB(project),
+        summarize=lambda **_k: "resumo",
+        prompt_from_summary=lambda **_k: "prompt",
+        upload=lambda *_a, **_k: "https://cdn.example.com/thumbnail.png",
+        image_client=FakeProvider(),
+    )
+    assert result["advanced"] is False
+    assert advanced == []
+    assert project.current_stage is ProjectStage.THUMBNAIL_STAGE
+
+
+def test_enqueue_thumbnail_generate_queues_in_review():
+    from app.core.generate_thumbnail import enqueue_thumbnail_generate
+    from app.core.state_machine import IllegalTransition
+    from app.models.enums import ProjectStatus
+
+    project = _project("openai", status=ProjectStatus.PAUSED_FOR_REVIEW)
+    queued: list[tuple] = []
+    result = enqueue_thumbnail_generate(
+        project.id,
+        db=FakeDB(project),
+        send_task=lambda name, args=None, queue=None, **_k: queued.append((name, args, queue)),
+    )
+    assert result["project_id"] == str(project.id)
+    assert queued == [("scenecraft.generate_thumbnail", [str(project.id)], "thumbnail")]
+
+    project.current_stage = ProjectStage.RENDER_REVIEW
+    with pytest.raises(IllegalTransition, match="thumbnail_stage"):
+        enqueue_thumbnail_generate(
+            project.id,
+            db=FakeDB(project),
+            send_task=lambda *_a, **_k: None,
+        )
+
+
+def test_persist_uploaded_thumbnail_saves_uploaded_source():
+    from app.core.generate_thumbnail import persist_uploaded_thumbnail
+    from app.core.state_machine import IllegalTransition
+    from app.models.enums import ProjectStatus
+    from io import BytesIO
+
+    project = _project("openai", status=ProjectStatus.PAUSED_FOR_REVIEW)
+    uploaded = []
+
+    def fake_upload(fileobj, *, project_id, filename, content_type):
+        uploaded.append((project_id, filename, content_type))
+        return f"https://cdn.example.com/{filename}"
+
+    result = persist_uploaded_thumbnail(
+        project.id,
+        BytesIO(b"PNG"),
+        "cover.JPG",
+        "image/jpeg",
+        db=FakeDB(project),
+        upload=fake_upload,
+    )
+    assert result["source"] == ThumbnailSource.UPLOADED.value
+    assert project.thumbnails[0].source is ThumbnailSource.UPLOADED
+    assert uploaded[0][1].endswith("cover.JPG")
+
+    with pytest.raises(Exception, match="imagem"):
+        persist_uploaded_thumbnail(
+            project.id,
+            BytesIO(b"x"),
+            "notes.txt",
+            "text/plain",
+            db=FakeDB(project),
+            upload=fake_upload,
+        )
+
+    project.current_stage = ProjectStage.DESCRIPTION_STAGE
+    with pytest.raises(IllegalTransition, match="thumbnail_stage"):
+        persist_uploaded_thumbnail(
+            project.id,
+            BytesIO(b"PNG"),
+            "ok.png",
+            "image/png",
+            db=FakeDB(project),
+            upload=fake_upload,
+        )
+
+
 def test_celery_task_is_registered_with_project_id():
     celery = pytest.importorskip("celery")
     _ = celery

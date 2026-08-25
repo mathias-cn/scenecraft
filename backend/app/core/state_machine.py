@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.project_audio import attach_original_audio_for_render, should_skip_audio_stage
+from app.core.project_audio import attach_original_audio_for_render, config_bool, should_skip_audio_stage
 from app.core.queues import QueueStep, step_for_queue, step_for_stage
 from app.models.enums import JobStatus, ProjectStage, ProjectStatus
 from app.models.job import Job
@@ -282,6 +282,11 @@ def advance_stage(
         if nxt is None:
             raise IllegalTransition(f"não há estágio seguinte a partir de {current.value}")
 
+        if current is ProjectStage.THUMBNAIL_STAGE:
+            thumbs = list(getattr(project, "thumbnails", None) or [])
+            if not thumbs:
+                raise IllegalTransition("projeto sem thumbnail")
+
         project.current_stage = nxt
         project.updated_at = _now()
 
@@ -315,6 +320,30 @@ def advance_stage(
             )
 
         if nxt is ProjectStage.AUDIO_STAGE:
+            project.status = ProjectStatus.PAUSED_FOR_REVIEW
+            session.commit()
+            return AdvanceResult(
+                project_id=project.id,
+                from_stage=expected,
+                to_stage=nxt,
+                status=project.status,
+                paused_for_review=True,
+            )
+
+        if nxt is ProjectStage.THUMBNAIL_STAGE:
+            if config_bool(project.automation_config, "auto_thumbnail"):
+                project.status = ProjectStatus.RUNNING
+                job = _dispatch_work(session, project, nxt)
+                session.commit()
+                return AdvanceResult(
+                    project_id=project.id,
+                    from_stage=expected,
+                    to_stage=nxt,
+                    status=project.status,
+                    paused_for_review=False,
+                    dispatched_job_id=job.id,
+                    auto_advanced=True,
+                )
             project.status = ProjectStatus.PAUSED_FOR_REVIEW
             session.commit()
             return AdvanceResult(

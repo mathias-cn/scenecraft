@@ -109,7 +109,7 @@ export function reviewTitle(stage: ProjectStage): string {
     case "render_review":
       return "Revisar render";
     case "thumbnail_stage":
-      return "Revisar thumbnail";
+      return "Thumbnail do vídeo";
     case "description_stage":
       return "Revisar descrição";
     case "ready_to_publish":

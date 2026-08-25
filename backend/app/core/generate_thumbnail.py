@@ -12,7 +12,7 @@ from app.core.project_cast import enrich_visual_prompt, load_project_character, 
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
 from app.core.transcribe_project import language_code
-from app.models.enums import ProjectStage, ThumbnailSource
+from app.models.enums import ProjectStage, ProjectStatus, ThumbnailSource
 from app.models.project import Project
 from app.models.thumbnail import Thumbnail
 from app.providers.image_provider import (
@@ -161,11 +161,110 @@ def _advance_thumbnail(session: Session, project: Project) -> bool:
         return False
     if current is not ProjectStage.THUMBNAIL_STAGE:
         return False
+    status = getattr(project, "status", None)
+    if status is ProjectStatus.PAUSED_FOR_REVIEW:
+        return False
     try:
         advance_stage(project.id, ProjectStage.THUMBNAIL_STAGE, db=session)
         return True
     except IllegalTransition:
         return False
+
+
+def enqueue_thumbnail_generate(
+    project_id: str | UUID,
+    db: Session | None = None,
+    *,
+    send_task=None,
+) -> dict:
+    """Dispara generate_thumbnail em thumbnail_stage, sem avançar o estágio."""
+    session, owns = _session(db)
+    try:
+        pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
+        project = session.get(Project, pid)
+        if project is None:
+            raise ProjectNotFound(str(pid))
+        if (
+            parse_stage(project.current_stage) is not ProjectStage.THUMBNAIL_STAGE
+            or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
+        ):
+            raise IllegalTransition("thumbnail só pode ser gerada em thumbnail_stage")
+        enqueue = send_task
+        if enqueue is None:
+            from app.celery_app import celery_app
+
+            enqueue = celery_app.send_task
+        enqueue("scenecraft.generate_thumbnail", args=[str(project.id)], queue="thumbnail")
+        if owns:
+            session.commit()
+        return {"project_id": str(project.id)}
+    except Exception:
+        if owns:
+            session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
+
+
+def persist_uploaded_thumbnail(
+    project_id: str | UUID,
+    fileobj,
+    filename: str,
+    content_type: str | None,
+    db: Session | None = None,
+    *,
+    upload=None,
+) -> dict:
+    """Grava uma thumbnail enviada (source=uploaded) sem avançar o estágio."""
+    session, owns = _session(db)
+    try:
+        pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
+        project = session.get(Project, pid)
+        if project is None:
+            raise ProjectNotFound(str(pid))
+        if (
+            parse_stage(project.current_stage) is not ProjectStage.THUMBNAIL_STAGE
+            or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
+        ):
+            raise IllegalTransition("thumbnail só pode ser enviada em thumbnail_stage")
+
+        from app.core.ingest import assert_image_upload_filename, persist_upload, sanitize_image_filename
+
+        safe_name = sanitize_image_filename(filename)
+        assert_image_upload_filename(safe_name)
+        put = upload or persist_upload
+        url = put(
+            fileobj,
+            project_id=project.id,
+            filename=f"thumbnails/{safe_name}",
+            content_type=content_type,
+        )
+        thumb = Thumbnail(
+            project_id=project.id,
+            source=ThumbnailSource.UPLOADED,
+            file_url=url,
+        )
+        session.add(thumb)
+        thumbs = getattr(project, "thumbnails", None)
+        if thumbs is not None:
+            thumbs.append(thumb)
+        session.flush()
+        if owns:
+            session.commit()
+        return {
+            "project_id": str(project.id),
+            "thumbnail_id": str(thumb.id) if getattr(thumb, "id", None) else None,
+            "file_url": url,
+            "source": ThumbnailSource.UPLOADED.value,
+        }
+    except Exception:
+        if owns:
+            session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
 
 
 def _session(db: Session | None) -> tuple[Session, bool]:

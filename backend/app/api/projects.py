@@ -11,6 +11,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
 from app.core.generate_scene_media import enqueue_scene_regenerate
+from app.core.generate_thumbnail import enqueue_thumbnail_generate, persist_uploaded_thumbnail
 from app.core.render_video import enqueue_render_regenerate
 from app.core.ingest import (
     IngestError,
@@ -297,6 +298,52 @@ def regenerate_project_render(project_id: UUID, db: DbDep) -> ProjectDetail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
         enqueue_render_regenerate(project.id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/thumbnail/generate")
+def generate_project_thumbnail(project_id: UUID, db: DbDep) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        enqueue_thumbnail_generate(project.id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/thumbnail/upload")
+def upload_project_thumbnail(
+    project_id: UUID,
+    db: DbDep,
+    file: Annotated[UploadFile, File()],
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        persist_uploaded_thumbnail(
+            project.id,
+            file.file,
+            file.filename or "thumbnail.png",
+            file.content_type,
+            db=db,
+        )
+    except IngestError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except (ProjectNotFound, IllegalTransition) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()

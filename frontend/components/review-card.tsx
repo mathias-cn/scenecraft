@@ -6,6 +6,7 @@ import { AudioStagePanel } from "@/components/audio-stage-panel";
 import { MediaReview } from "@/components/media-review";
 import { RenderReview } from "@/components/render-review";
 import { ReviewStageBody, reviewTitle } from "@/components/review-stage-body";
+import { ThumbnailStagePanel } from "@/components/thumbnail-stage-panel";
 import { TranscriptReview } from "@/components/transcript-review";
 import { advanceProject, getProject } from "@/lib/api";
 import type { ProjectDetail } from "@/lib/types";
@@ -23,6 +24,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   const isMediaReview = project.current_stage === "media_review";
   const isAudioStage = project.current_stage === "audio_stage";
   const isRenderReview = project.current_stage === "render_review";
+  const isThumbnailStage = project.current_stage === "thumbnail_stage";
 
   async function onApprove() {
     setBusy(true);
@@ -52,7 +54,9 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
                 ? "Defina o áudio final. Em seguida o Whisper realinha os tempos das cenas."
                 : isRenderReview
                   ? "Assista ao vídeo final. Regenerar render refaz a montagem (reusa clipes em cache); ao aprovar, o pipeline segue."
-                  : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
+                  : isThumbnailStage
+                    ? "Gere uma thumbnail com IA ou envie a sua. Qualquer uma das opções é salva antes de avançar."
+                    : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
       </p>
       {isTranscript ? (
         <TranscriptReview
@@ -66,6 +70,8 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
         <AudioStagePanel project={project} onUpdated={onUpdated} />
       ) : isRenderReview ? (
         <RenderReview project={project} onUpdated={onUpdated} />
+      ) : isThumbnailStage ? (
+        <ThumbnailStagePanel project={project} onUpdated={onUpdated} />
       ) : (
         <>
           <ReviewStageBody project={project} />
