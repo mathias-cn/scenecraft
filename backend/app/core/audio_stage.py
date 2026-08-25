@@ -7,7 +7,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.generate_audio import generate_project_audio
+from app.core.generate_audio import generate_audio
 from app.core.project_audio import audio_generation_mode
 from app.core.retranscribe_align import retranscribe_and_align
 from app.core.state_machine import ProjectNotFound
@@ -29,7 +29,7 @@ def run_audio_stage(
         mode = str(data.get("audio_generation_mode") or audio_generation_mode(project.automation_config))
         if mode == "elevenlabs":
             voice_id = str(data.get("voice_id") or (project.automation_config or {}).get("voice_id") or "")
-            generate_project_audio(project.id, voice_id=voice_id, db=session)
+            generate_audio(project.id, voice_id, db=session)
         result = retranscribe_and_align(project.id, db=session)
         result["audio_generation_mode"] = mode
         if owns:

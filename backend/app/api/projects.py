@@ -318,7 +318,7 @@ def list_audio_voices(project_id: UUID, db: DbDep) -> list[VoiceRead]:
     project = db.get(Project, project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    from app.providers.elevenlabs import ElevenLabsError, list_voices
+    from app.providers.elevenlabs_client import ElevenLabsError, list_voices
 
     try:
         voices = list_voices()
