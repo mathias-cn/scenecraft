@@ -148,6 +148,7 @@ export type Thumbnail = {
 export type Description = {
   id: string;
   text: string;
+  tags: string[];
   source: string;
 };
 

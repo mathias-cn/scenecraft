@@ -266,6 +266,7 @@ class DescriptionRead(BaseModel):
     id: uuid.UUID
     project_id: uuid.UUID
     text: str
+    tags: list[str] = Field(default_factory=list)
     source: str
 
     model_config = {"from_attributes": True}

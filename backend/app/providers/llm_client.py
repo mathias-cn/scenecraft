@@ -3,7 +3,7 @@
 `structured_completion` é o método único reutilizado para:
 - agrupar transcript em scenes (só source_segment_ids + visual_prompt)
 - traduzir cada segmento (preservando start_ms/end_ms)
-- gerar a descrição do vídeo a partir do transcript completo
+- gerar a descrição do vídeo e as tags SEO a partir do transcript completo
 - resumir o vídeo e montar o prompt da thumbnail
 """
 
@@ -38,13 +38,13 @@ Regras:
 - Copie start_ms e end_ms exatamente como no input; não altere timestamps.
 - text_translated é só a tradução do texto; não junte nem divida segmentos."""
 
-DESCRIPTION_SYSTEM = """Você escreve a descrição de um vídeo para o YouTube a partir do transcript.
+DESCRIPTION_SYSTEM = """Você escreve a descrição e as tags de um vídeo para o YouTube a partir do transcript.
 Responda só com um objeto JSON na forma:
-{"text":"...","title":"..."}
+{"text":"...","tags":["..."]}
 Regras:
-- text é a descrição completa (parágrafos curtos, sem timestamps).
-- title é um título opcional se o input não trouxer um bom título.
-- Idioma da descrição = idioma pedido no JSON de entrada."""
+- text é UM parágrafo otimizado para YouTube: resumo do conteúdo e, se fizer sentido, um call-to-action (inscrever, comentar, assistir outro vídeo). Sem timestamps e sem hashtags no texto.
+- tags: 10 a 15 palavras-chave no formato do campo de tags do YouTube (sem #, sem vírgula dentro da tag; espaços entre palavras são permitidos).
+- Idioma da descrição e das tags = idioma pedido no JSON de entrada."""
 
 TITLE_SYSTEM = """Você sugere títulos de YouTube a partir de um rascunho.
 Responda só com um objeto JSON na forma:
@@ -316,17 +316,49 @@ def generate_description(
     title: str,
     transcript: str,
     language: str = "pt-BR",
-) -> dict[str, str]:
-    """Gera a descrição do vídeo a partir do transcript completo."""
-    payload = {"title": title, "language": language, "transcript": transcript}
-    result = structured_completion(DESCRIPTION_SYSTEM, json.dumps(payload, ensure_ascii=False))
-    text = str(result.get("text") or result.get("description") or "").strip()
+) -> dict[str, Any]:
+    """Gera descrição YouTube + tags SEO a partir do transcript (um único JSON)."""
+    text = (transcript or "").strip()
     if not text:
+        raise LLMError("transcript vazio para gerar descrição")
+    payload = {"title": title, "language": language, "transcript": text}
+    result = structured_completion(DESCRIPTION_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    body = str(result.get("text") or result.get("description") or "").strip()
+    if not body:
         raise LLMJSONError("JSON de descrição deve conter 'text'")
     return {
-        "text": text,
+        "text": body,
+        "tags": normalize_youtube_tags(result.get("tags")),
         "title": str(result.get("title") or title).strip() or title,
     }
+
+
+MIN_YOUTUBE_TAGS = 10
+MAX_YOUTUBE_TAGS = 15
+
+
+def normalize_youtube_tags(raw: Any) -> list[str]:
+    """Limpa tags no formato do campo YouTube: sem #, sem duplicata, 10–15 itens."""
+    if not isinstance(raw, list):
+        raise LLMJSONError("JSON de descrição deve conter a lista 'tags'")
+    tags: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = " ".join(str(item or "").replace(",", " ").split())
+        if text.startswith("#"):
+            text = text.lstrip("#").strip()
+        if not text:
+            continue
+        key = text.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        tags.append(text)
+        if len(tags) == MAX_YOUTUBE_TAGS:
+            break
+    if len(tags) < MIN_YOUTUBE_TAGS:
+        raise LLMJSONError("JSON de descrição deve conter 10 a 15 tags")
+    return tags
 
 
 def summarize_video(

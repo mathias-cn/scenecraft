@@ -200,12 +200,53 @@ def test_translate_segments_batches_long_transcripts(monkeypatch):
 
 
 def test_generate_description_from_transcript(monkeypatch):
+    tags = [f"tag {i}" for i in range(12)]
     monkeypatch.setattr(
         "app.providers.llm_client.structured_completion",
-        lambda _s, _u: {"text": "Um vídeo sobre o mar.", "title": "O Mar"},
+        lambda _s, _u: {"text": "Um vídeo sobre o mar. Inscreva-se.", "tags": tags, "title": "O Mar"},
     )
     result = generate_description(title="Mar", transcript="o mar é azul", language="pt-BR")
-    assert result == {"text": "Um vídeo sobre o mar.", "title": "O Mar"}
+    assert result["text"] == "Um vídeo sobre o mar. Inscreva-se."
+    assert result["tags"] == tags
+    assert result["title"] == "O Mar"
+
+
+def test_generate_description_strips_hashtags_and_requires_ten_tags(monkeypatch):
+    from app.providers.llm_client import generate_description
+
+    raw = ["#mar", "oceano", "  oceano  ", "natação"] + [f"kw{i}" for i in range(8)]
+    monkeypatch.setattr(
+        "app.providers.llm_client.structured_completion",
+        lambda _s, _u: {"text": "Parágrafo.", "tags": raw},
+    )
+    result = generate_description(title="Mar", transcript="azul")
+    assert "mar" in result["tags"]
+    assert "#" not in "".join(result["tags"])
+    assert result["tags"].count("oceano") == 1
+    assert 10 <= len(result["tags"]) <= 15
+
+    monkeypatch.setattr(
+        "app.providers.llm_client.structured_completion",
+        lambda _s, _u: {"text": "Parágrafo.", "tags": ["só uma"]},
+    )
+    with pytest.raises(LLMJSONError, match="10 a 15"):
+        generate_description(title="Mar", transcript="azul")
+
+
+def test_generate_description_rejects_empty_transcript():
+    from app.providers.llm_client import generate_description
+
+    with pytest.raises(LLMError, match="vazio"):
+        generate_description(title="x", transcript="  ")
+
+
+def test_normalize_youtube_tags_caps_at_fifteen_and_rejects_missing_list():
+    from app.providers.llm_client import MAX_YOUTUBE_TAGS, normalize_youtube_tags
+
+    raw = [f"kw{i}" for i in range(20)]
+    assert len(normalize_youtube_tags(raw)) == MAX_YOUTUBE_TAGS
+    with pytest.raises(LLMJSONError, match="lista"):
+        normalize_youtube_tags("mar, oceano")
 
 
 def test_structured_completion_uses_override_model():

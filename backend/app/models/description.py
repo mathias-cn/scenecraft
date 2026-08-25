@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Text
+from sqlalchemy import Text, text as sql_text
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -18,6 +19,12 @@ class Description(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
     __tablename__ = "descriptions"
 
     text: Mapped[str] = mapped_column(Text, nullable=False)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(Text),
+        nullable=False,
+        default=list,
+        server_default=sql_text("'{}'::text[]"),
+    )
     source: Mapped[DescriptionSource] = mapped_column(
         pg_enum(DescriptionSource, "description_source"), nullable=False
     )

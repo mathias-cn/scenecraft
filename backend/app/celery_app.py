@@ -41,6 +41,7 @@ celery_app.conf.update(
         "scenecraft.thumbnail": {"queue": "thumbnail"},
         "scenecraft.generate_thumbnail": {"queue": "thumbnail"},
         "scenecraft.description": {"queue": "description"},
+        "scenecraft.generate_description": {"queue": "description"},
         "scenecraft.upload": {"queue": "upload"},
         "scenecraft.generate_character_base_image": {"queue": "media_gen"},
         "scenecraft.generate_character_set": {"queue": "media_gen"},
