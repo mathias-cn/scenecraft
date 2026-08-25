@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from app.core.config import settings
+from app.providers.openai_auth import OpenAIKeyError, openai_client
 
 # whisper-1 is the only OpenAI model that supports verbose_json + segment timestamps.
 # Do not switch to gpt-transcribe / gpt-4o-transcribe.
@@ -118,18 +118,11 @@ def _attr_or_key(obj: Any, name: str) -> Any:
     return getattr(obj, name, None)
 
 
-def _api_key() -> str:
-    key = (settings.openai_api_key or "").strip()
-    if not key or key.startswith("your_"):
-        raise TranscriptionError("OPENAI_API_KEY não configurada")
-    return key
-
-
 def _openai_client():
-    key = _api_key()
-    from openai import OpenAI
-
-    return OpenAI(api_key=key)
+    try:
+        return openai_client()
+    except OpenAIKeyError as exc:
+        raise TranscriptionError(str(exc)) from exc
 
 
 def _split_oversized_audio(audio_path: str):

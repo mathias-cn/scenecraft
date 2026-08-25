@@ -3,7 +3,20 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.providers.llm_client import LLMJSONError, structured_completion
+from app.providers.llm_client import (
+    LLMError,
+    LLMJSONError,
+    LLMProvider,
+    OpenAILLMProvider,
+    generate_description,
+    plan_scenes,
+    set_llm_provider,
+    structured_completion,
+    translate_segments,
+)
+from app.providers import llm_client as llm_module
+from app.providers import transcription_client as transcription_module
+from app.providers.openai_auth import openai_client as shared_openai_client
 
 
 class FakeCompletions:
@@ -20,12 +33,16 @@ def _client(content, recorder):
     return SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions(content, recorder)))
 
 
-def test_structured_completion_parses_json_object(monkeypatch):
+@pytest.fixture(autouse=True)
+def restore_llm_provider():
+    set_llm_provider(OpenAILLMProvider())
+    yield
+    set_llm_provider(OpenAILLMProvider())
+
+
+def test_structured_completion_parses_json_object():
     recorder: list[dict] = []
-    monkeypatch.setattr(
-        "app.providers.llm_client._openai_client",
-        lambda: _client('{"scenes": [1], "title": "x"}', recorder),
-    )
+    set_llm_provider(OpenAILLMProvider(client=_client('{"scenes": [1], "title": "x"}', recorder)))
     result = structured_completion("Você é um planejador. Responda em JSON.", "liste as cenas")
     assert result == {"scenes": [1], "title": "x"}
     assert recorder[0]["model"] == "gpt-4o-mini"
@@ -36,32 +53,108 @@ def test_structured_completion_parses_json_object(monkeypatch):
     ]
 
 
-def test_structured_completion_invalid_json_raises(monkeypatch):
-    monkeypatch.setattr(
-        "app.providers.llm_client._openai_client",
-        lambda: _client("não é json {", []),
-    )
+def test_structured_completion_invalid_json_raises():
+    set_llm_provider(OpenAILLMProvider(client=_client("não é json {", [])))
     with pytest.raises(LLMJSONError, match="não é JSON válido") as exc_info:
         structured_completion("sys", "user")
     assert isinstance(exc_info.value.__cause__, json.JSONDecodeError)
 
 
-def test_structured_completion_empty_body(monkeypatch):
-    monkeypatch.setattr("app.providers.llm_client._openai_client", lambda: _client("   ", []))
+def test_structured_completion_empty_body():
+    set_llm_provider(OpenAILLMProvider(client=_client("   ", [])))
     with pytest.raises(LLMJSONError, match="vazia"):
         structured_completion("sys", "user")
 
 
-def test_structured_completion_rejects_json_array(monkeypatch):
-    monkeypatch.setattr("app.providers.llm_client._openai_client", lambda: _client("[1, 2]", []))
+def test_structured_completion_rejects_json_array():
+    set_llm_provider(OpenAILLMProvider(client=_client("[1, 2]", [])))
     with pytest.raises(LLMJSONError, match="objeto JSON"):
         structured_completion("sys", "user")
 
 
 def test_structured_completion_requires_api_key(monkeypatch):
     monkeypatch.setattr(
-        "app.providers.llm_client.settings",
+        "app.providers.openai_auth.settings",
         SimpleNamespace(openai_api_key=""),
     )
-    with pytest.raises(LLMJSONError, match="OPENAI_API_KEY"):
-        structured_completion("sys", "user")
+    with pytest.raises(LLMError, match="OPENAI_API_KEY"):
+        OpenAILLMProvider().structured_completion("sys", "user")
+
+
+def test_openai_provider_is_llm_provider():
+    assert issubclass(OpenAILLMProvider, LLMProvider)
+    assert isinstance(OpenAILLMProvider(), LLMProvider)
+
+
+def test_transcription_and_llm_share_openai_api_key():
+    assert transcription_module.openai_client is shared_openai_client
+    assert llm_module.openai_client is shared_openai_client
+
+
+def test_plan_scenes_returns_visual_prompts(monkeypatch):
+    captured: list[tuple[str, str]] = []
+
+    def fake_completion(system_prompt: str, user_content: str) -> dict:
+        captured.append((system_prompt, user_content))
+        return {
+            "scenes": [
+                {
+                    "index": 0,
+                    "start_ms": 0,
+                    "end_ms": 2000,
+                    "source_segment_ids": [0, 1],
+                    "visual_prompt": "Wide shot of a rainy street at night, neon reflections",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    scenes = plan_scenes(
+        [
+            {"index": 0, "start_ms": 0, "end_ms": 1000, "text_original": "olá"},
+            {"index": 1, "start_ms": 1000, "end_ms": 2000, "text": "mundo"},
+        ],
+        language="pt-BR",
+    )
+    assert scenes[0]["visual_prompt"].startswith("Wide shot")
+    assert scenes[0]["source_segment_ids"] == [0, 1]
+    assert "scenes" in captured[0][0].lower() or "cenas" in captured[0][0].lower()
+    assert "olá" in captured[0][1]
+
+
+def test_translate_segments_keeps_original_timestamps(monkeypatch):
+    def fake_completion(_system: str, _user: str) -> dict:
+        return {
+            "segments": [
+                {
+                    "index": 0,
+                    "start_ms": 999,
+                    "end_ms": 999,
+                    "text_translated": "hello there",
+                }
+            ]
+        }
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    rows = translate_segments(
+        [{"index": 0, "start_ms": 120, "end_ms": 880, "text": "olá"}],
+        target_language="en",
+    )
+    assert rows == [
+        {
+            "index": 0,
+            "start_ms": 120,
+            "end_ms": 880,
+            "text_original": "olá",
+            "text_translated": "hello there",
+        }
+    ]
+
+
+def test_generate_description_from_transcript(monkeypatch):
+    monkeypatch.setattr(
+        "app.providers.llm_client.structured_completion",
+        lambda _s, _u: {"text": "Um vídeo sobre o mar.", "title": "O Mar"},
+    )
+    result = generate_description(title="Mar", transcript="o mar é azul", language="pt-BR")
+    assert result == {"text": "Um vídeo sobre o mar.", "title": "O Mar"}
