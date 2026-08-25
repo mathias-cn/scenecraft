@@ -74,6 +74,18 @@ export function formatTimecode(ms: number): string {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
+export function formatDurationMs(ms: number): string {
+  const total = Math.max(0, ms);
+  const seconds = total / 1000;
+  if (seconds < 60) {
+    const rounded = Math.round(seconds * 10) / 10;
+    return `${rounded}s`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return `${minutes}m ${rest}s`;
+}
+
 const ACTIVE_JOB_STATUSES = new Set(["queued", "running", "retrying"]);
 
 export function isJobRunning(

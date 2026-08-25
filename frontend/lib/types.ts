@@ -102,6 +102,7 @@ export type Scene = {
   index: number;
   start_ms: number;
   end_ms: number;
+  source_segment_ids?: number[];
   visual_prompt: string;
   media_type: "image" | "video";
   media_url: string | null;

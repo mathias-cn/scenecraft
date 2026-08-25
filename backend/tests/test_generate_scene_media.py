@@ -281,6 +281,66 @@ def test_generate_scene_media_higgsfield_appends_character_text(monkeypatch):
     assert "heroína de casaco vermelho" in fake.calls[0][0]
 
 
+def test_enqueue_scene_regenerate_queues_only_that_scene():
+    from app.core.generate_scene_media import enqueue_scene_regenerate
+    from app.core.state_machine import IllegalTransition
+    from app.models.enums import ProjectStage, ProjectStatus
+
+    project, scene = _scene_project("openai")
+    project.current_stage = ProjectStage.MEDIA_REVIEW
+    project.status = ProjectStatus.PAUSED_FOR_REVIEW
+    db = FakeDB(project, scene)
+    queued: list[tuple] = []
+
+    result = enqueue_scene_regenerate(
+        project.id,
+        scene.id,
+        db=db,
+        send_task=lambda name, args=None, queue=None, **_k: queued.append((name, args, queue)),
+    )
+    assert scene.status is SceneStatus.GENERATING
+    assert result["scene_id"] == str(scene.id)
+    assert queued == [("scenecraft.generate_scene_media", [str(project.id), str(scene.id)], "media_gen")]
+
+    project.current_stage = ProjectStage.SCENE_REVIEW
+    with pytest.raises(IllegalTransition, match="media_review"):
+        enqueue_scene_regenerate(
+            project.id,
+            scene.id,
+            db=db,
+            send_task=lambda *_a, **_k: None,
+        )
+
+
+def test_generate_scene_media_does_not_advance_during_media_review(monkeypatch):
+    from app.models.enums import ProjectStage
+
+    project, scene = _scene_project("openai")
+    project.current_stage = ProjectStage.MEDIA_REVIEW
+    project.scenes = [scene]
+    db = FakeDB(project, scene)
+    fake = FakeProvider("openai")
+    advanced = []
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", lambda name: fake)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.advance_stage",
+        lambda *a, **k: advanced.append(True),
+    )
+    result = generate_scene_media(
+        project.id,
+        scene.id,
+        db=db,
+        upload=lambda *_a, **_k: "https://cdn.example.com/s.png",
+    )
+    assert scene.status is SceneStatus.READY
+    assert result["advanced"] is False
+    assert advanced == []
+
+
 def test_generate_scene_media_appends_style_from_config(monkeypatch):
     from app.models.style import Style
 

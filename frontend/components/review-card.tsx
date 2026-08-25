@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { AudioStagePanel } from "@/components/audio-stage-panel";
+import { MediaReview } from "@/components/media-review";
 import { ReviewStageBody, reviewTitle } from "@/components/review-stage-body";
 import { TranscriptReview } from "@/components/transcript-review";
 import { advanceProject, getProject } from "@/lib/api";
@@ -18,6 +19,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   const [error, setError] = useState<string | null>(null);
   const isTranscript = project.current_stage === "transcript_review";
   const isSceneReview = project.current_stage === "scene_review";
+  const isMediaReview = project.current_stage === "media_review";
   const isAudioStage = project.current_stage === "audio_stage";
 
   async function onApprove() {
@@ -42,7 +44,9 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           ? "Edite o original e a tradução se precisar. Ao aprovar, as alterações são salvas e o pipeline segue."
           : isSceneReview
             ? "Revise as cenas. O modelo de imagem já foi definido na criação do projeto."
-            : isAudioStage
+            : isMediaReview
+              ? "Confira a imagem de cada cena. Regenerar refaz só aquela cena; ao aprovar, o pipeline segue."
+              : isAudioStage
               ? "Defina o áudio final. Em seguida o Whisper realinha os tempos das cenas."
               : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
       </p>
@@ -52,6 +56,8 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           project={project}
           onUpdated={onUpdated}
         />
+      ) : isMediaReview ? (
+        <MediaReview project={project} onUpdated={onUpdated} />
       ) : isAudioStage ? (
         <AudioStagePanel project={project} onUpdated={onUpdated} />
       ) : (

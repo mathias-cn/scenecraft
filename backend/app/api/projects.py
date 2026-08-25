@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
+from app.core.generate_scene_media import enqueue_scene_regenerate
 from app.core.ingest import (
     IngestError,
     assert_audio_upload_filename,
@@ -37,6 +38,7 @@ from app.core.transcript_edits import TranscriptEditError, apply_transcript_edit
 from app.models.audio_track import AudioTrack
 from app.models.enums import AudioTrackSource, ProjectStage, ProjectStatus, SourceType
 from app.models.project import Project
+from app.models.scene import Scene
 from app.schemas.project import (
     AdvanceRead,
     AdvanceRequest,
@@ -257,6 +259,29 @@ def patch_transcript(
         apply_transcript_edits(list(project.transcript_segments), payload.segments)
     except TranscriptEditError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/scenes/{scene_id}/regenerate")
+def regenerate_project_scene(
+    project_id: UUID,
+    scene_id: UUID,
+    db: DbDep,
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    scene = db.get(Scene, scene_id)
+    if scene is None or scene.project_id != project.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene not found")
+    try:
+        enqueue_scene_regenerate(project.id, scene.id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
     if project is None:

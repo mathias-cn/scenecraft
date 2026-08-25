@@ -13,7 +13,7 @@ from app.core.job_groups import check_job_group_complete
 from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
-from app.models.enums import MediaType, ProjectStage, SceneStatus
+from app.models.enums import MediaType, ProjectStage, ProjectStatus, SceneStatus
 from app.models.project import Project
 from app.models.scene import Scene
 from app.providers.image_provider import (
@@ -186,6 +186,53 @@ def generate_project_media(
         if owns:
             session.commit()
         return {"project_id": str(pid), "scenes": results, "count": len(results)}
+    except Exception:
+        if owns:
+            session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
+
+
+def enqueue_scene_regenerate(
+    project_id: str | UUID,
+    scene_id: str | UUID,
+    db: Session | None = None,
+    *,
+    send_task=None,
+) -> dict:
+    """Marca a cena como generating e dispara generate_scene_media só para ela (media_review)."""
+    session, owns = _session(db)
+    try:
+        pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
+        sid = scene_id if isinstance(scene_id, UUID) else UUID(str(scene_id))
+        project = session.get(Project, pid)
+        if project is None:
+            raise ProjectNotFound(str(pid))
+        if (
+            parse_stage(project.current_stage) is not ProjectStage.MEDIA_REVIEW
+            or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
+        ):
+            raise IllegalTransition("cena só pode ser regenerada em media_review")
+        scene = session.get(Scene, sid)
+        if scene is None or scene.project_id != project.id:
+            raise ProjectNotFound(f"scene {sid}")
+        scene.status = SceneStatus.GENERATING
+        session.flush()
+        enqueue = send_task
+        if enqueue is None:
+            from app.celery_app import celery_app
+
+            enqueue = celery_app.send_task
+        enqueue(
+            "scenecraft.generate_scene_media",
+            args=[str(project.id), str(scene.id)],
+            queue="media_gen",
+        )
+        if owns:
+            session.commit()
+        return {"project_id": str(project.id), "scene_id": str(scene.id)}
     except Exception:
         if owns:
             session.rollback()
