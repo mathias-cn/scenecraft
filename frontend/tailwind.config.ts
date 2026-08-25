@@ -7,9 +7,9 @@ const config: Config = {
       colors: {
         ink: {
           950: "#0c0b0a",
-          900: "#141210",
-          800: "#1c1916",
-          700: "#2a2520",
+          900: "#12110f",
+          800: "#1a1815",
+          700: "#2a2621",
         },
         brass: {
           400: "#e8c07a",
@@ -18,8 +18,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        display: ["var(--font-display)", "serif"],
-        sans: ["var(--font-sans)", "system-ui", "sans-serif"],
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ["var(--font-mono)", "ui-monospace", "SFMono-Regular", "monospace"],
       },
     },
   },

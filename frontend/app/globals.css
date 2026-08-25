@@ -12,14 +12,17 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(1200px 500px at 10% -10%, rgba(212, 160, 86, 0.08), transparent 55%),
-    radial-gradient(800px 400px at 100% 0%, rgba(80, 50, 20, 0.25), transparent 50%),
-    #0c0b0a;
-  color: #f4efe6;
+  background: #0c0b0a;
+  color: #e8e4dc;
 }
 
 ::selection {
   background: #d4a056;
   color: #0c0b0a;
+}
+
+@layer components {
+  .label-tech {
+    @apply font-mono text-[11px] font-medium tracking-[0.16em] text-white/40 uppercase;
+  }
 }

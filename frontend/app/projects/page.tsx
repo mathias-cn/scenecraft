@@ -1,0 +1,379 @@
+"use client";
+
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+
+import { advanceProject, createProject, getProject, listProjects, retryProjectStage } from "@/lib/api";
+import type { Project, ProjectDetail, ProjectStage, ProjectStatus, SourceType } from "@/lib/types";
+
+const STAGES: ProjectStage[] = [
+  "created",
+  "transcribing",
+  "transcript_review",
+  "scene_planning",
+  "scene_review",
+  "generating_media",
+  "media_review",
+  "audio_stage",
+  "audio_review",
+  "rendering",
+  "render_review",
+  "thumbnail_stage",
+  "description_stage",
+  "ready_to_publish",
+  "uploading",
+  "published",
+];
+
+const STAGE_LABEL: Record<ProjectStage, string> = {
+  created: "Criado",
+  transcribing: "Transcrição",
+  transcript_review: "Review transcrição",
+  scene_planning: "Cenas",
+  scene_review: "Review cenas",
+  generating_media: "Mídia",
+  media_review: "Review mídia",
+  audio_stage: "Áudio",
+  audio_review: "Review áudio",
+  rendering: "Render",
+  render_review: "Review render",
+  thumbnail_stage: "Thumb",
+  description_stage: "Descrição",
+  ready_to_publish: "Pronto p/ publicar",
+  uploading: "Upload",
+  published: "Publicado",
+  failed: "Falhou",
+};
+
+const SOURCE_LABEL: Record<SourceType, string> = {
+  youtube_link: "Link do YouTube",
+  upload_video: "Upload de vídeo",
+  upload_audio: "Upload de áudio",
+};
+
+function isActive(status: ProjectStatus) {
+  return status === "pending" || status === "running";
+}
+
+function statusClass(status: ProjectStatus, stage: ProjectStage) {
+  if (status === "failed") return "bg-red-500/15 text-red-300";
+  if (status === "completed" || stage === "published") return "bg-brass-500/15 text-brass-400";
+  if (status === "paused_for_review") return "bg-white/10 text-brass-400";
+  return "bg-white/10 text-white/65";
+}
+
+export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [title, setTitle] = useState("");
+  const [sourceType, setSourceType] = useState<SourceType>("youtube_link");
+  const [sourceRef, setSourceRef] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("pt-BR");
+  const [file, setFile] = useState<File | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ProjectDetail | null>(null);
+  const needsFile = sourceType !== "youtube_link";
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await listProjects();
+      setProjects(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Falha ao falar com a API");
+    } finally {
+      setReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => {
+      void refresh();
+    }, 2500);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+
+  async function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (!title.trim()) return;
+    if (needsFile && !file) {
+      setError("Selecione um arquivo de vídeo ou áudio.");
+      return;
+    }
+    if (!needsFile && !sourceRef.trim()) return;
+    setBusy(true);
+    try {
+      await createProject(
+        {
+          title: title.trim(),
+          source_type: sourceType,
+          source_ref: needsFile ? undefined : sourceRef.trim(),
+          target_language: targetLanguage.trim() || "pt-BR",
+          automation_config: {},
+        },
+        file,
+      );
+      setTitle("");
+      setSourceRef("");
+      setFile(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível criar o projeto");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onAdvance(project: Project) {
+    setBusy(true);
+    try {
+      await advanceProject(project.id, project.current_stage);
+      await refresh();
+      if (openId === project.id) {
+        setDetail(await getProject(project.id));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível avançar o estágio");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRetry(project: Project) {
+    setBusy(true);
+    try {
+      await retryProjectStage(project.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível reexecutar o estágio");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onToggleDetail(project: Project) {
+    if (openId === project.id) {
+      setOpenId(null);
+      setDetail(null);
+      return;
+    }
+    try {
+      const data = await getProject(project.id);
+      setOpenId(project.id);
+      setDetail(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o detalhe");
+    }
+  }
+
+  const inFlight = useMemo(
+    () => projects.filter((project) => isActive(project.status)).length,
+    [projects],
+  );
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-8 flex flex-wrap items-end justify-between gap-3">
+        <p className="text-sm text-white/45">
+          Da fonte ao upload: transcrição, cenas, áudio, montagem e publicação.
+        </p>
+        <p className="font-mono text-[11px] tracking-widest text-white/35 uppercase">
+          {projects.length} projeto{projects.length === 1 ? "" : "s"}
+          <span className="ml-3 text-brass-500">{inFlight} em produção</span>
+        </p>
+      </div>
+
+      <section className="mb-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+        <form
+          onSubmit={onSubmit}
+          className="rounded-xl border border-white/[0.08] bg-ink-900 p-5"
+        >
+          <h2 className="text-base font-medium text-white">Novo projeto</h2>
+          <label className="label-tech mt-5 block">
+            Título
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className="mt-2 w-full rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-sans text-sm font-normal tracking-normal text-white normal-case outline-none focus:border-brass-500"
+              placeholder="Como eu automatizei meu canal"
+              required
+            />
+          </label>
+          <label className="label-tech mt-4 block">
+            Fonte
+            <select
+              value={sourceType}
+              onChange={(event) => {
+                setSourceType(event.target.value as SourceType);
+                setFile(null);
+              }}
+              className="mt-2 w-full rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-sans text-sm font-normal tracking-normal text-white normal-case outline-none focus:border-brass-500"
+            >
+              <option value="youtube_link">Link do YouTube</option>
+              <option value="upload_video">Upload de vídeo</option>
+              <option value="upload_audio">Upload de áudio</option>
+            </select>
+          </label>
+          {needsFile ? (
+            <label className="label-tech mt-4 block">
+              Arquivo
+              <input
+                type="file"
+                accept={sourceType === "upload_audio" ? "audio/*" : "video/*"}
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className="mt-2 w-full rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-sans text-sm font-normal tracking-normal text-white normal-case outline-none file:mr-3 file:rounded file:border-0 file:bg-brass-500 file:px-2 file:py-1 file:font-mono file:text-[10px] file:tracking-wide file:text-ink-950 focus:border-brass-500"
+                required
+              />
+            </label>
+          ) : (
+            <label className="label-tech mt-4 block">
+              Link do YouTube
+              <textarea
+                value={sourceRef}
+                onChange={(event) => setSourceRef(event.target.value)}
+                rows={3}
+                className="mt-2 w-full resize-y rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-sans text-sm font-normal tracking-normal text-white normal-case outline-none focus:border-brass-500"
+                placeholder="https://www.youtube.com/watch?v=…"
+                required
+              />
+            </label>
+          )}
+          <label className="label-tech mt-4 block">
+            Idioma alvo
+            <input
+              value={targetLanguage}
+              onChange={(event) => setTargetLanguage(event.target.value)}
+              className="mt-2 w-full rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-mono text-sm font-normal tracking-normal text-white normal-case outline-none focus:border-brass-500"
+              placeholder="pt-BR"
+              required
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-5 w-full rounded-md bg-brass-500 px-4 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-brass-400 disabled:opacity-50"
+          >
+            {busy ? "Enfileirando…" : "Gerar vídeo"}
+          </button>
+        </form>
+
+        <aside className="self-start rounded-xl border border-dashed border-white/10 p-5 text-sm text-white/50">
+          <p className="label-tech">Pipeline</p>
+          <ol className="mt-4 space-y-2.5 font-mono text-xs tracking-wide text-white/45">
+            <li>01 — ingestão da fonte</li>
+            <li>02 — transcrição e tradução</li>
+            <li>03 — cenas visuais + áudio</li>
+            <li>04 — montagem FFmpeg</li>
+            <li>05 — thumb, descrição e YouTube</li>
+          </ol>
+        </aside>
+      </section>
+
+      {error ? (
+        <p className="mb-6 rounded-md border border-red-500/30 bg-red-950/40 px-4 py-3 font-mono text-xs text-red-200">
+          {error}
+        </p>
+      ) : null}
+
+      <section>
+        <h2 className="mb-4 text-base font-medium text-white">Fila</h2>
+        {!ready ? (
+          <p className="text-sm text-white/40">Carregando…</p>
+        ) : projects.length === 0 ? (
+          <p className="text-sm text-white/40">Nenhum projeto ainda. Envie uma fonte para começar.</p>
+        ) : (
+          <ul className="space-y-3">
+            {projects.map((project) => (
+              <li key={project.id} className="rounded-xl border border-white/[0.08] bg-ink-900 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-medium text-white">{project.title}</h3>
+                    <p className="mt-1 max-w-2xl font-mono text-[11px] text-white/40">
+                      {SOURCE_LABEL[project.source_type]} · {project.status} · {project.source_ref}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {project.status === "paused_for_review" ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onAdvance(project)}
+                        className="rounded-full bg-brass-500 px-3 py-1 font-mono text-[10px] font-medium tracking-wide text-ink-950 uppercase disabled:opacity-50"
+                      >
+                        Avançar
+                      </button>
+                    ) : null}
+                    {project.status === "failed" ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onRetry(project)}
+                        className="rounded-full bg-red-400 px-3 py-1 font-mono text-[10px] font-medium tracking-wide text-ink-950 uppercase disabled:opacity-50"
+                      >
+                        Retry estágio
+                      </button>
+                    ) : null}
+                    <span
+                      className={`rounded-full px-2.5 py-1 font-mono text-[10px] tracking-wide uppercase ${statusClass(
+                        project.status,
+                        project.current_stage,
+                      )}`}
+                    >
+                      {STAGE_LABEL[project.current_stage]}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onToggleDetail(project)}
+                  className="label-tech mt-3 text-brass-500"
+                >
+                  {openId === project.id ? "Ocultar detalhe" : "Ver cenas, áudio e montagem"}
+                </button>
+                {openId === project.id && detail && detail.id === project.id ? (
+                  <div className="mt-3 space-y-2 rounded-lg border border-white/10 bg-ink-950/50 p-4 text-sm text-white/60">
+                    <p className="font-mono text-[11px]">{detail.scenes.length} cena(s)</p>
+                    <p className="font-mono text-[11px]">{detail.audio_tracks.length} faixa(s) de áudio</p>
+                    <p className="font-mono text-[11px]">
+                      Montagem:{" "}
+                      {detail.video_assembly
+                        ? `${detail.video_assembly.status}${detail.video_assembly.output_url ? ` · ${detail.video_assembly.output_url}` : ""}`
+                        : "ainda não renderizada"}
+                    </p>
+                    {detail.scenes.slice(0, 5).map((scene) => (
+                      <p key={scene.id} className="text-xs text-white/40">
+                        #{scene.index} {scene.visual_prompt}
+                      </p>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  {STAGES.map((stage) => {
+                    const currentIndex = STAGES.indexOf(project.current_stage);
+                    const stageIndex = STAGES.indexOf(stage);
+                    const done =
+                      project.status === "completed" ||
+                      project.current_stage === "published" ||
+                      (currentIndex >= 0 && stageIndex <= currentIndex);
+                    return (
+                      <span
+                        key={stage}
+                        className={`rounded-full px-2 py-1 font-mono text-[10px] tracking-wider uppercase ${
+                          done ? "bg-brass-500/15 text-brass-400" : "bg-white/5 text-white/25"
+                        }`}
+                      >
+                        {STAGE_LABEL[stage]}
+                      </span>
+                    );
+                  })}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
