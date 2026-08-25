@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-from app.config import postgres_connect_args, settings
+from app.core.config import postgres_connect_args, settings
 
 
 class Base(DeclarativeBase):

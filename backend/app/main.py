@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
-from app.config import settings
+from app.core.config import settings
 import app.models  # noqa: F401 — register SQLAlchemy metadata
 
 

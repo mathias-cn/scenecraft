@@ -4,10 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.celery_app import celery_app
+from app.core.state_machine import start_pipeline
 from app.db import get_db
-from app.models.enums import JobStatus, ProjectStage, ProjectStatus
-from app.models.job import Job
+from app.models.enums import ProjectStage, ProjectStatus
 from app.models.project import Project
 from app.schemas.project import ProjectCreate, ProjectRead
 
@@ -30,19 +29,17 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
         status=ProjectStatus.PENDING,
     )
     db.add(project)
-    db.flush()
-
-    job = Job(
-        project_id=project.id,
-        stage=ProjectStage.INGEST,
-        job_type="run_pipeline",
-        status=JobStatus.PENDING,
-        payload={"source_type": payload.source_type.value, "source_ref": payload.source_ref},
-    )
-    db.add(job)
     db.commit()
     db.refresh(project)
-    celery_app.send_task("scenecraft.run_pipeline", args=[str(job.id)])
+    start_pipeline(
+        db,
+        project,
+        payload={
+            "source_type": payload.source_type.value,
+            "source_ref": payload.source_ref,
+        },
+    )
+    db.refresh(project)
     return project
 
 

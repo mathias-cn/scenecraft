@@ -5,12 +5,25 @@ Sistema pessoal de geração automatizada de vídeos para YouTube.
 O pipeline pega uma ideia, escreve o roteiro (Anthropic), gera a narração (ElevenLabs), produz o vídeo (Higgsfield), armazena o media (S3 / Cloudflare R2) e publica no YouTube.
 
 ```
-frontend (Next.js)  →  api (FastAPI)  →  Supabase Postgres
+frontend (Next.js)  →  api (FastAPI)
                            ↓
-                      redis + worker (Celery)
+                      redis + workers Celery (filas por tipo de job)
+                           ↓
+                      Supabase Postgres
                            ↓
               Anthropic · ElevenLabs · Higgsfield · YouTube · S3/R2
 ```
+
+## Layout do backend
+
+| Pasta | Papel |
+| --- | --- |
+| `app/api` | Routers FastAPI (`/health`, `/api/projects`, `/api/jobs`) |
+| `app/tasks` | Tasks Celery (uma por fila) |
+| `app/models` | SQLAlchemy + enums Postgres |
+| `app/core` | Config, filas, máquina de estados, rate limiter Redis |
+| `app/celery_app.py` | Broker/result Redis e `task_queues` / `task_routes` |
+| `app/worker.py` | Sobe um worker por fila com concorrência independente |
 
 ## Stack
 
@@ -96,7 +109,7 @@ docker compose down
 ## Serviços no `docker-compose.yml`
 
 - **api** — FastAPI (`uvicorn`), porta `8000` (roda Alembic antes de subir)
-- **worker** — Celery worker (fila de geração de vídeos)
+- **worker** — um processo Celery por fila (`transcribe`, `scene_planning`, `media_gen`, `audio_gen`, `render`, `thumbnail`, `description`, `upload`), cada um com concorrência via env
 - **redis** — broker e backend de resultados do Celery
 - **frontend** — Next.js 14, porta `3000`
 
@@ -110,7 +123,9 @@ Veja `.env.example`. As principais:
 | --- | --- |
 | `DATABASE_URL` | Pooler Supabase (`6543`) — FastAPI e Celery |
 | `DATABASE_URL_MIGRATIONS` | Conexão direta Supabase (`5432`) — Alembic |
-| `REDIS_URL` | Celery broker / resultados |
+| `REDIS_URL` | Broker e result backend do Celery |
+| `CELERY_CONCURRENCY_*` | Concorrência por fila (ex. `CELERY_CONCURRENCY_MEDIA_GEN=1`) |
+| `RATE_LIMIT_*` | Teto de jobs por janela Redis (`RATE_LIMIT_WINDOW_SECONDS`) |
 | `HIGGSFIELD_API_KEY` | Geração de vídeo |
 | `ELEVENLABS_API_KEY` | TTS / narração |
 | `ANTHROPIC_API_KEY` | Roteiro |
@@ -136,7 +151,7 @@ poetry install
 # DATABASE_URL e DATABASE_URL_MIGRATIONS vêm do .env na raiz
 poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
-poetry run celery -A app.celery_app:celery_app worker --loglevel=info
+poetry run python -m app.worker
 ```
 
 **Frontend:**

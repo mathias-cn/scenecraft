@@ -1,4 +1,4 @@
-from app.config import settings
+from app.core.config import settings
 
 
 def synthesize(*, script: str, job_id: str) -> str:

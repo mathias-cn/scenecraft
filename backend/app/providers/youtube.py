@@ -1,4 +1,4 @@
-from app.config import settings
+from app.core.config import settings
 
 
 def upload_video(*, title: str, description: str, video_url: str) -> str:

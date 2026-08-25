@@ -1,1 +1,1 @@
-"""Celery task package."""
+"""Tasks Celery do pipeline SceneCraft."""

@@ -3,7 +3,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
-from app.config import postgres_connect_args, settings
+from app.core.config import postgres_connect_args, settings
 from app.db import Base
 import app.models  # noqa: F401 — register metadata
 

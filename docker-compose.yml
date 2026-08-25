@@ -46,7 +46,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A app.celery_app:celery_app worker --loglevel=info --concurrency=2
+    command: python -m app.worker
     env_file:
       - .env
     environment:
