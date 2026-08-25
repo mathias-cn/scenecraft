@@ -1,12 +1,31 @@
 from functools import lru_cache
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+def ensure_sslmode(url: str, mode: str = "require") -> str:
+    """Append sslmode=require when the DSN does not already set it (Supabase exige SSL)."""
+    parsed = urlparse(url)
+    query = parse_qsl(parsed.query, keep_blank_values=True)
+    if not any(key.lower() == "sslmode" for key, _ in query):
+        query.append(("sslmode", mode))
+    return urlunparse(parsed._replace(query=urlencode(query)))
 
-    database_url: str = "postgresql://scenecraft:scenecraft@postgres:5432/scenecraft"
+
+def postgres_connect_args(url: str) -> dict[str, str]:
+    """Pass sslmode to libpq. Defaults to require; an explicit sslmode= in the URL wins."""
+    params = dict(parse_qsl(urlparse(ensure_sslmode(url)).query))
+    return {"sslmode": params.get("sslmode", "require")}
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=(".env", "../.env"), extra="ignore")
+
+    # Pooler Supabase (porta 6543) — FastAPI e Celery
+    database_url: str
+    # Conexão direta Supabase (porta 5432) — só Alembic
+    database_url_migrations: str
     redis_url: str = "redis://redis:6379/0"
 
     higgsfield_api_key: str = ""
@@ -38,6 +57,14 @@ class Settings(BaseSettings):
         if self.r2_account_id:
             return f"https://{self.r2_account_id}.r2.cloudflarestorage.com"
         return ""
+
+    @property
+    def database_url_ssl(self) -> str:
+        return ensure_sslmode(self.database_url)
+
+    @property
+    def database_url_migrations_ssl(self) -> str:
+        return ensure_sslmode(self.database_url_migrations)
 
 
 @lru_cache

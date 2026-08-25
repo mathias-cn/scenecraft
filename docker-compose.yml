@@ -1,23 +1,6 @@
 name: scenecraft
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: scenecraft
-      POSTGRES_PASSWORD: scenecraft
-      POSTGRES_DB: scenecraft
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U scenecraft -d scenecraft"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     ports:
@@ -37,15 +20,12 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://scenecraft:scenecraft@postgres:5432/scenecraft}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -70,13 +50,10 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://scenecraft:scenecraft@postgres:5432/scenecraft}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     volumes:
       - ./backend:/app
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       api:
@@ -98,6 +75,17 @@ services:
       - api
     restart: unless-stopped
 
+  # Opcional — Postgres local sem internet: descomente o serviço abaixo
+  # e use sslmode=disable nas duas DATABASE_URL*.
+  # postgres:
+  #   profiles: ["local-db"]
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: scenecraft
+  #     POSTGRES_PASSWORD: scenecraft
+  #     POSTGRES_DB: scenecraft
+  #   ports:
+  #     - "5432:5432"
+
 volumes:
-  postgres_data:
   frontend_node_modules:
