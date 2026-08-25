@@ -206,6 +206,7 @@ def test_gere_clipes_projeto_uploads_and_stores_config(tmp_path):
     assert result["count"] == 1
     assert result["ken_burns"] is True
     assert result["clips"] == ["https://cdn.example.com/scene_0000.mp4"]
-    assert project.video_assemblies[0].render_config["scene_clips"] == result["clips"]
+    assert project.video_assemblies[0].render_config["scene_clips"][0]["url"] == result["clips"][0]
+    assert project.video_assemblies[0].render_config["scene_clips"][0]["token"]
     assert project.video_assemblies[0].status is AssemblyStatus.RENDERING
     assert uploaded[0][2] == "scene_0000.mp4"

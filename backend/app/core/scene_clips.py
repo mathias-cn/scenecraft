@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import subprocess
 import tempfile
@@ -39,6 +40,49 @@ class SceneClipSpec:
     end_ms: int
     media_url: str
     media_type: str
+
+
+def clip_output_name(index: int) -> str:
+    return f"scene_{int(index):04d}.mp4"
+
+
+def clip_cache_token(spec: SceneClipSpec, ken_burns: bool) -> str:
+    apply = bool(ken_burns) and spec.media_type != MediaType.VIDEO.value
+    payload = (
+        f"{spec.id}|{spec.index}|{spec.media_url}|{spec.start_ms}|{spec.end_ms}|{int(apply)}"
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def clip_cache_entry(spec: SceneClipSpec, ken_burns: bool, url: str = "") -> dict[str, Any]:
+    apply = bool(ken_burns) and spec.media_type != MediaType.VIDEO.value
+    return {
+        "scene_id": spec.id,
+        "index": spec.index,
+        "url": url,
+        "media_url": spec.media_url,
+        "start_ms": spec.start_ms,
+        "end_ms": spec.end_ms,
+        "ken_burns": apply,
+        "token": clip_cache_token(spec, ken_burns),
+    }
+
+
+def clip_cache_hit(entry: Any, spec: SceneClipSpec, ken_burns: bool) -> bool:
+    if not isinstance(entry, dict):
+        return False
+    if not str(entry.get("url") or "").strip():
+        return False
+    return str(entry.get("token") or "") == clip_cache_token(spec, ken_burns)
+
+
+def index_clip_cache(raw: Any) -> dict[int, dict[str, Any]]:
+    out: dict[int, dict[str, Any]] = {}
+    for item in raw or []:
+        if not isinstance(item, dict) or item.get("index") is None:
+            continue
+        out[int(item["index"])] = item
+    return out
 
 
 def ken_burns_enabled(config: dict[str, Any] | None) -> bool:
@@ -126,7 +170,7 @@ def gere_clipe_cena(
     """Gera um .mp4 da imagem da cena com a duração de (end_ms - start_ms)."""
     spec = scene if isinstance(scene, SceneClipSpec) else spec_from_scene(scene)
     duration = scene_duration_ms(spec)
-    dest = Path(output_path) if output_path else Path(tempfile.mkdtemp(prefix="scenecraft-clip-")) / _clip_name(spec)
+    dest = Path(output_path) if output_path else Path(tempfile.mkdtemp(prefix="scenecraft-clip-")) / clip_output_name(spec.index)
     dest.parent.mkdir(parents=True, exist_ok=True)
     source = Path(image_path) if image_path else _download_scene_image(spec, dest.parent, download=download)
     if not source.is_file():
@@ -168,7 +212,7 @@ def gere_clipes_cenas(
             pool.submit(
                 worker,
                 spec,
-                dest_dir / _clip_name(spec),
+                dest_dir / clip_output_name(spec.index),
                 ken_burns=ken_burns,
                 download=download,
                 run=run,
@@ -225,9 +269,13 @@ def gere_clipes_projeto(
                 run=run,
             )
             urls = [upload(str(path), str(project.id), path.name) for path in clips]
+            entries = [
+                clip_cache_entry(spec, apply_zoom, url)
+                for spec, url in zip(specs, urls, strict=True)
+            ]
 
         config = dict(assembly.render_config or {})
-        config["scene_clips"] = urls
+        config["scene_clips"] = entries
         config["ken_burns"] = apply_zoom
         assembly.render_config = config
         try:
@@ -239,8 +287,8 @@ def gere_clipes_projeto(
             session.commit()
         return {
             "project_id": str(project.id),
-            "clips": urls,
-            "count": len(urls),
+            "clips": [item["url"] for item in entries],
+            "count": len(entries),
             "ken_burns": apply_zoom,
         }
     except Exception:
@@ -250,10 +298,6 @@ def gere_clipes_projeto(
     finally:
         if owns:
             session.close()
-
-
-def _clip_name(spec: SceneClipSpec) -> str:
-    return f"scene_{spec.index:04d}.mp4"
 
 
 def _image_suffix(url: str) -> str:
@@ -280,6 +324,9 @@ def _run_ffmpeg(cmd: list[str], *, timeout: float, run=None) -> None:
     if code:
         err = (getattr(completed, "stderr", None) or getattr(completed, "stdout", None) or "").strip()
         raise ClipError(f"ffmpeg falhou: {(err or str(code))[:500]}")
+
+
+run_ffmpeg = _run_ffmpeg
 
 
 def _session(db: Session | None) -> tuple[Session, bool]:

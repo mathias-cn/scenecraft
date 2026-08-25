@@ -37,6 +37,7 @@ celery_app.conf.update(
         "scenecraft.generate_audio": {"queue": "audio_gen"},
         "scenecraft.retranscribe_and_align": {"queue": "audio_gen"},
         "scenecraft.render": {"queue": "render"},
+        "scenecraft.render_video": {"queue": "render"},
         "scenecraft.thumbnail": {"queue": "thumbnail"},
         "scenecraft.description": {"queue": "description"},
         "scenecraft.upload": {"queue": "upload"},
