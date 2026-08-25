@@ -63,6 +63,9 @@ def test_auto_flag_for_review_stages():
     assert not auto_flag_enabled({}, ProjectStage.TRANSCRIPT_REVIEW)
     assert not auto_flag_enabled({"auto_transcribe": True}, ProjectStage.SCENE_REVIEW)
     assert auto_flag_enabled({"auto_publish": True}, ProjectStage.READY_TO_PUBLISH)
+    assert auto_flag_enabled({"auto_media_gen": True}, ProjectStage.MEDIA_REVIEW)
+    assert auto_flag_enabled({"auto_description": True}, ProjectStage.READY_TO_PUBLISH)
+    assert not auto_flag_enabled({"auto_media_gen": False}, ProjectStage.MEDIA_REVIEW)
 
 
 class FakeDB:

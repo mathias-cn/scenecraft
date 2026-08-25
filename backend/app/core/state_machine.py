@@ -43,6 +43,11 @@ REVIEW_AUTO_FLAGS: dict[ProjectStage, str] = {
     ProjectStage.READY_TO_PUBLISH: "auto_publish",
 }
 
+FLAG_ALIASES: dict[str, tuple[str, ...]] = {
+    "auto_media": ("auto_media", "auto_media_gen"),
+    "auto_publish": ("auto_publish", "auto_description"),
+}
+
 TERMINAL_STAGES = frozenset({ProjectStage.PUBLISHED, ProjectStage.FAILED})
 
 
@@ -98,8 +103,9 @@ def auto_flag_enabled(automation_config: dict[str, Any] | None, stage: ProjectSt
     flag = REVIEW_AUTO_FLAGS.get(stage)
     if not flag:
         return False
-    value = (automation_config or {}).get(flag, False)
-    return value in (True, 1, "1", "true", "True", "yes", "on")
+    config = automation_config or {}
+    keys = FLAG_ALIASES.get(flag, (flag,))
+    return any(config.get(key) in (True, 1, "1", "true", "True", "yes", "on") for key in keys)
 
 
 def _now() -> datetime:
