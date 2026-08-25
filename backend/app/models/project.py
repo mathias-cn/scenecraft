@@ -48,7 +48,11 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     transcript_segments: Mapped[list[TranscriptSegment]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
-    scenes: Mapped[list[Scene]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    scenes: Mapped[list[Scene]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="Scene.index",
+    )
     audio_tracks: Mapped[list[AudioTrack]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
@@ -64,4 +68,14 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     youtube_uploads: Mapped[list[YoutubeUpload]] = relationship(
         back_populates="project", cascade="all, delete-orphan"
     )
-    jobs: Mapped[list[Job]] = relationship(back_populates="project", cascade="all, delete-orphan")
+    jobs: Mapped[list[Job]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="Job.created_at",
+    )
+
+    @property
+    def video_assembly(self) -> VideoAssembly | None:
+        if not self.video_assemblies:
+            return None
+        return self.video_assemblies[-1]

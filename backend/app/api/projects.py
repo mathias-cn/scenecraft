@@ -1,29 +1,157 @@
-from uuid import UUID
+from json import JSONDecodeError
+from typing import Annotated
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import selectinload
 
-from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, start_pipeline
-from app.db import get_db
-from app.models.enums import ProjectStage, ProjectStatus
+from app.api.deps import DbDep
+from app.core.ingest import (
+    IngestError,
+    assert_upload_filename,
+    parse_automation_config,
+    persist_upload,
+    resolve_source_ref,
+    sanitize_filename,
+)
+from app.core.state_machine import (
+    IllegalTransition,
+    ProjectNotFound,
+    advance_stage,
+    retry_stage,
+    start_pipeline,
+)
+from app.models.enums import ProjectStage, ProjectStatus, SourceType
 from app.models.project import Project
-from app.schemas.project import AdvanceRead, AdvanceRequest, ProjectCreate, ProjectRead
+from app.schemas.project import AdvanceRead, AdvanceRequest, ProjectCreate, ProjectDetail, ProjectRead
+from app.storage import StorageError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-@router.get("", response_model=list[ProjectRead])
-def list_projects(db: Session = Depends(get_db)) -> list[Project]:
-    return list(db.scalars(select(Project).order_by(Project.created_at.desc())).all())
+class CreateProjectInput:
+    def __init__(self, payload: ProjectCreate, file: UploadFile | None) -> None:
+        self.payload = payload
+        self.file = file
 
 
-@router.post("", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
-def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Project:
+async def parse_create_input(request: Request) -> CreateProjectInput:
+    content_type = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        raw_file = form.get("file")
+        file = raw_file if isinstance(raw_file, UploadFile) else None
+        try:
+            source_type = SourceType(str(form.get("source_type") or ""))
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="source_type inválido",
+            ) from exc
+        try:
+            payload = ProjectCreate(
+                title=str(form.get("title") or ""),
+                source_type=source_type,
+                source_ref=str(form.get("source_ref") or "") or None,
+                target_language=str(form.get("target_language") or "pt-BR"),
+                automation_config=parse_automation_config(form.get("automation_config")),
+            )
+        except (IngestError, ValidationError) as exc:
+            _raise_create_validation(exc)
+        return CreateProjectInput(payload, file)
+
+    try:
+        body = await request.json()
+    except JSONDecodeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JSON inválido") from exc
+    try:
+        payload = ProjectCreate.model_validate(body)
+    except ValidationError as exc:
+        raise RequestValidationError(exc.errors()) from exc
+    return CreateProjectInput(payload, None)
+
+
+def _raise_create_validation(exc: Exception) -> None:
+    if isinstance(exc, ValidationError):
+        raise RequestValidationError(exc.errors()) from exc
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+
+CreateInputDep = Annotated[CreateProjectInput, Depends(parse_create_input)]
+
+
+def _http_for_transition(exc: Exception) -> HTTPException:
+    if isinstance(exc, ProjectNotFound):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if isinstance(exc, IllegalTransition):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+def _detail_query(db, project_id: UUID) -> Project | None:
+    return db.scalars(
+        select(Project)
+        .options(
+            selectinload(Project.scenes),
+            selectinload(Project.audio_tracks),
+            selectinload(Project.video_assemblies),
+            selectinload(Project.transcript_segments),
+            selectinload(Project.jobs),
+        )
+        .where(Project.id == project_id)
+    ).first()
+
+
+@router.get("")
+def list_projects(db: DbDep) -> list[ProjectRead]:
+    projects = list(db.scalars(select(Project).order_by(Project.created_at.desc())).all())
+    return [ProjectRead.model_validate(project) for project in projects]
+
+
+@router.post("", status_code=status.HTTP_201_CREATED)
+def create_project(parsed: CreateInputDep, db: DbDep) -> ProjectRead:
+    payload = parsed.payload
+    upload = parsed.file
+    has_file = upload is not None and bool(upload.filename)
+    try:
+        source_ref = resolve_source_ref(
+            source_type=payload.source_type,
+            source_ref=payload.source_ref,
+            has_file=has_file,
+        )
+    except IngestError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
+    project_id = uuid4()
+    if has_file:
+        filename = sanitize_filename(upload.filename, payload.source_type)
+        try:
+            assert_upload_filename(filename, payload.source_type)
+            source_ref = persist_upload(
+                upload.file,
+                project_id=project_id,
+                filename=filename,
+                content_type=upload.content_type,
+            )
+        except IngestError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        except StorageError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+
+    if not source_ref:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="source_ref ausente após o upload",
+        )
+
     project = Project(
+        id=project_id,
         title=payload.title,
         source_type=payload.source_type,
-        source_ref=payload.source_ref,
+        source_ref=source_ref,
         target_language=payload.target_language,
         automation_config=payload.automation_config,
         current_stage=ProjectStage.CREATED,
@@ -34,27 +162,41 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
     db.refresh(project)
     start_pipeline(db, project)
     db.refresh(project)
-    return project
+    return ProjectRead.model_validate(project)
 
 
-@router.post("/{project_id}/advance", response_model=AdvanceRead)
+@router.post("/{project_id}/advance")
 def advance_project(
     project_id: UUID,
-    payload: AdvanceRequest,
-    db: Session = Depends(get_db),
+    db: DbDep,
+    payload: AdvanceRequest | None = None,
 ) -> AdvanceRead:
+    body = payload or AdvanceRequest()
+    from_stage = body.from_stage
+    if from_stage is None:
+        project = db.get(Project, project_id)
+        if project is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+        from_stage = project.current_stage
     try:
-        result = advance_stage(project_id, payload.from_stage, db=db)
-    except ProjectNotFound as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found") from exc
-    except IllegalTransition as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        result = advance_stage(project_id, from_stage, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
     return AdvanceRead.model_validate(result)
 
 
-@router.get("/{project_id}", response_model=ProjectRead)
-def get_project(project_id: UUID, db: Session = Depends(get_db)) -> Project:
-    project = db.get(Project, project_id)
+@router.post("/{project_id}/retry-stage")
+def retry_project_stage(project_id: UUID, db: DbDep) -> AdvanceRead:
+    try:
+        result = retry_stage(project_id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    return AdvanceRead.model_validate(result)
+
+
+@router.get("/{project_id}")
+def get_project(project_id: UUID, db: DbDep) -> ProjectDetail:
+    project = _detail_query(db, project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return project
+    return ProjectDetail.model_validate(project)

@@ -169,6 +169,38 @@ def _parse_location(url: str) -> tuple[str, str]:
     raise StorageError(f"não foi possível extrair bucket/key de {url}")
 
 
+def upload_fileobj(
+    fileobj,
+    project_id: str,
+    filename: str,
+    *,
+    content_type: str | None = None,
+) -> str:
+    """Envia um file-like para `{project_id}/{filename}` e devolve a URL pública (ou s3)."""
+    key = object_key(project_id, filename)
+    guessed, _ = mimetypes.guess_type(filename)
+    media_type = content_type or guessed
+    extra = {"ContentType": media_type} if media_type else None
+
+    def _put() -> None:
+        kwargs: dict = {
+            "Fileobj": fileobj,
+            "Bucket": settings.s3_bucket,
+            "Key": key,
+        }
+        if extra:
+            kwargs["ExtraArgs"] = extra
+        _client().upload_fileobj(**kwargs)
+
+    if hasattr(fileobj, "seek"):
+        try:
+            fileobj.seek(0)
+        except (OSError, AttributeError):
+            pass
+    _with_retry("upload_fileobj", _put)
+    return public_url(key)
+
+
 def upload_file(local_path: str, project_id: str, filename: str) -> str:
     """Envia um arquivo local para `{project_id}/{filename}` e devolve a URL pública (ou s3)."""
     source = Path(local_path)

@@ -11,6 +11,8 @@ from app.core.state_machine import (
     is_valid_transition,
     linear_next,
     parse_stage,
+    retry_stage,
+    stage_to_retry,
 )
 from app.models.enums import JobStatus, ProjectStage, ProjectStatus, SourceType
 
@@ -64,8 +66,9 @@ def test_auto_flag_for_review_stages():
 
 
 class FakeDB:
-    def __init__(self, project):
+    def __init__(self, project, jobs=None):
         self.project = project
+        self.jobs = list(jobs or [])
         self.added: list = []
         self.commits = 0
         self.rollbacks = 0
@@ -84,6 +87,9 @@ class FakeDB:
 
     def rollback(self):
         self.rollbacks += 1
+
+    def scalars(self, _stmt):
+        return SimpleNamespace(all=lambda: list(self.jobs), first=lambda: self.jobs[0] if self.jobs else None)
 
 
 def _project(**kwargs):
@@ -235,3 +241,43 @@ def test_auto_publish_starts_upload(monkeypatch):
     assert result.to_stage is ProjectStage.UPLOADING
     assert result.auto_advanced is True
     assert enqueued == ["upload"]
+
+
+def test_stage_to_retry_keeps_work_stage():
+    project = _project(current_stage=ProjectStage.GENERATING_MEDIA, status=ProjectStatus.FAILED)
+    assert stage_to_retry(project, []) is ProjectStage.GENERATING_MEDIA
+
+
+def test_stage_to_retry_reads_last_job_when_stage_is_failed():
+    job = SimpleNamespace(stage=ProjectStage.AUDIO_STAGE)
+    project = _project(current_stage=ProjectStage.FAILED, status=ProjectStatus.FAILED)
+    assert stage_to_retry(project, [job]) is ProjectStage.AUDIO_STAGE
+
+
+def test_retry_stage_rejects_when_not_failed(monkeypatch):
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    project = _project(current_stage=ProjectStage.TRANSCRIBING, status=ProjectStatus.RUNNING)
+    db = FakeDB(project)
+    with pytest.raises(IllegalTransition, match="após falha"):
+        retry_stage(project.id, db=db)
+
+
+def test_retry_stage_redispatches_current_work_stage(monkeypatch):
+    enqueued = []
+    monkeypatch.setattr(
+        "app.core.state_machine.enqueue_job",
+        lambda step, job_id: enqueued.append(step.queue.value),
+    )
+    project = _project(current_stage=ProjectStage.GENERATING_MEDIA, status=ProjectStatus.FAILED)
+    previous = SimpleNamespace(
+        stage=ProjectStage.GENERATING_MEDIA,
+        job_group_id=uuid4(),
+        payload={"scene": 1},
+    )
+    db = FakeDB(project, jobs=[previous])
+    result = retry_stage(project.id, db=db)
+    assert result.to_stage is ProjectStage.GENERATING_MEDIA
+    assert project.status is ProjectStatus.RUNNING
+    assert enqueued == ["media_gen"]
+    assert result.dispatched_job_id is not None
+    assert db.added[0].payload == {"scene": 1}

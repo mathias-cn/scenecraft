@@ -43,7 +43,47 @@ export type Project = {
 export type ProjectCreate = {
   title: string;
   source_type: SourceType;
-  source_ref: string;
+  source_ref?: string;
   target_language: string;
   automation_config?: Record<string, unknown>;
+};
+
+export type Scene = {
+  id: string;
+  index: number;
+  start_ms: number;
+  end_ms: number;
+  visual_prompt: string;
+  media_type: "image" | "video";
+  media_url: string | null;
+  status: string;
+};
+
+export type AudioTrack = {
+  id: string;
+  source: "original" | "generated";
+  provider: string | null;
+  file_url: string | null;
+};
+
+export type VideoAssembly = {
+  id: string;
+  ffmpeg_job_id: string | null;
+  output_url: string | null;
+  status: string;
+};
+
+export type ProjectDetail = Project & {
+  scenes: Scene[];
+  audio_tracks: AudioTrack[];
+  video_assembly: VideoAssembly | null;
+};
+
+export type AdvanceResult = {
+  project_id: string;
+  from_stage: ProjectStage;
+  to_stage: ProjectStage;
+  status: ProjectStatus;
+  paused_for_review: boolean;
+  dispatched_job_id: string | null;
 };

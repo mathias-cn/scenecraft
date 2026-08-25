@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.storage import StorageError, download_file, upload_file
+from app.storage import StorageError, download_file, upload_file, upload_fileobj
 
 
 def upload_media(*, job_id: str, source: str) -> str:
@@ -13,4 +13,4 @@ def upload_media(*, job_id: str, source: str) -> str:
     return source
 
 
-__all__ = ["StorageError", "download_file", "upload_file", "upload_media"]
+__all__ = ["StorageError", "download_file", "upload_file", "upload_fileobj", "upload_media"]

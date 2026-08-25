@@ -2,8 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { createProject, listProjects } from "@/lib/api";
-import type { Project, ProjectStage, ProjectStatus, SourceType } from "@/lib/types";
+import { advanceProject, createProject, getProject, listProjects, retryProjectStage } from "@/lib/api";
+import type { Project, ProjectDetail, ProjectStage, ProjectStatus, SourceType } from "@/lib/types";
 
 const STAGES: ProjectStage[] = [
   "created",
@@ -60,9 +60,13 @@ export default function HomePage() {
   const [sourceType, setSourceType] = useState<SourceType>("youtube_link");
   const [sourceRef, setSourceRef] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("pt-BR");
+  const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [detail, setDetail] = useState<ProjectDetail | null>(null);
+  const needsFile = sourceType !== "youtube_link";
 
   const refresh = useCallback(async () => {
     try {
@@ -86,22 +90,74 @@ export default function HomePage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!title.trim() || !sourceRef.trim()) return;
+    if (!title.trim()) return;
+    if (needsFile && !file) {
+      setError("Selecione um arquivo de vídeo ou áudio.");
+      return;
+    }
+    if (!needsFile && !sourceRef.trim()) return;
     setBusy(true);
     try {
-      await createProject({
-        title: title.trim(),
-        source_type: sourceType,
-        source_ref: sourceRef.trim(),
-        target_language: targetLanguage.trim() || "pt-BR",
-      });
+      await createProject(
+        {
+          title: title.trim(),
+          source_type: sourceType,
+          source_ref: needsFile ? undefined : sourceRef.trim(),
+          target_language: targetLanguage.trim() || "pt-BR",
+          automation_config: {},
+        },
+        file,
+      );
       setTitle("");
       setSourceRef("");
+      setFile(null);
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível criar o projeto");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onAdvance(project: Project) {
+    setBusy(true);
+    try {
+      await advanceProject(project.id, project.current_stage);
+      await refresh();
+      if (openId === project.id) {
+        setDetail(await getProject(project.id));
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível avançar o estágio");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRetry(project: Project) {
+    setBusy(true);
+    try {
+      await retryProjectStage(project.id);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível reexecutar o estágio");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onToggleDetail(project: Project) {
+    if (openId === project.id) {
+      setOpenId(null);
+      setDetail(null);
+      return;
+    }
+    try {
+      const data = await getProject(project.id);
+      setOpenId(project.id);
+      setDetail(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível carregar o detalhe");
     }
   }
 
@@ -150,7 +206,10 @@ export default function HomePage() {
             Fonte
             <select
               value={sourceType}
-              onChange={(event) => setSourceType(event.target.value as SourceType)}
+              onChange={(event) => {
+                setSourceType(event.target.value as SourceType);
+                setFile(null);
+              }}
               className="mt-2 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm text-white outline-none focus:border-brass-500"
             >
               <option value="youtube_link">Link do YouTube</option>
@@ -158,17 +217,30 @@ export default function HomePage() {
               <option value="upload_audio">Upload de áudio</option>
             </select>
           </label>
-          <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
-            Referência
-            <textarea
-              value={sourceRef}
-              onChange={(event) => setSourceRef(event.target.value)}
-              rows={4}
-              className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm leading-relaxed text-white outline-none focus:border-brass-500"
-              placeholder="URL do YouTube ou chave do arquivo no storage"
-              required
-            />
-          </label>
+          {needsFile ? (
+            <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
+              Arquivo
+              <input
+                type="file"
+                accept={sourceType === "upload_audio" ? "audio/*" : "video/*"}
+                onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+                className="mt-2 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm text-white outline-none file:mr-3 file:rounded file:border-0 file:bg-brass-500 file:px-2 file:py-1 file:text-ink-950 focus:border-brass-500"
+                required
+              />
+            </label>
+          ) : (
+            <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
+              Link do YouTube
+              <textarea
+                value={sourceRef}
+                onChange={(event) => setSourceRef(event.target.value)}
+                rows={3}
+                className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm leading-relaxed text-white outline-none focus:border-brass-500"
+                placeholder="https://www.youtube.com/watch?v=…"
+                required
+              />
+            </label>
+          )}
           <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
             Idioma alvo
             <input
@@ -224,9 +296,30 @@ export default function HomePage() {
                   <div>
                     <h3 className="font-display text-lg text-white">{project.title}</h3>
                     <p className="mt-1 max-w-2xl text-sm text-white/45">
-                      {SOURCE_LABEL[project.source_type]} · {project.source_ref}
+                      {SOURCE_LABEL[project.source_type]} · {project.status} · {project.source_ref}
                     </p>
                   </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {project.status === "paused_for_review" && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onAdvance(project)}
+                        className="rounded-full bg-brass-500 px-3 py-1 text-xs font-semibold text-ink-950 disabled:opacity-50"
+                      >
+                        Avançar
+                      </button>
+                    )}
+                    {project.status === "failed" && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void onRetry(project)}
+                        className="rounded-full bg-red-400 px-3 py-1 text-xs font-semibold text-ink-950 disabled:opacity-50"
+                      >
+                        Retry estágio
+                      </button>
+                    )}
                   <span
                     className={`rounded-full px-3 py-1 text-xs tracking-wide uppercase ${
                       project.status === "failed"
@@ -240,7 +333,32 @@ export default function HomePage() {
                   >
                     {STAGE_LABEL[project.current_stage]}
                   </span>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => void onToggleDetail(project)}
+                  className="mt-3 text-xs tracking-widest text-brass-500 uppercase"
+                >
+                  {openId === project.id ? "Ocultar detalhe" : "Ver cenas, áudio e montagem"}
+                </button>
+                {openId === project.id && detail && detail.id === project.id && (
+                  <div className="mt-3 space-y-2 rounded-xl border border-white/10 bg-ink-950/50 p-4 text-sm text-white/60">
+                    <p>{detail.scenes.length} cena(s)</p>
+                    <p>{detail.audio_tracks.length} faixa(s) de áudio</p>
+                    <p>
+                      Montagem:{" "}
+                      {detail.video_assembly
+                        ? `${detail.video_assembly.status}${detail.video_assembly.output_url ? ` · ${detail.video_assembly.output_url}` : ""}`
+                        : "ainda não renderizada"}
+                    </p>
+                    {detail.scenes.slice(0, 5).map((scene) => (
+                      <p key={scene.id} className="text-xs text-white/40">
+                        #{scene.index} {scene.visual_prompt}
+                      </p>
+                    ))}
+                  </div>
+                )}
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {STAGES.map((stage) => {
                     const currentIndex = STAGES.indexOf(project.current_stage);

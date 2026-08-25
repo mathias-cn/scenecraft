@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.queues import QueueStep, step_for_queue, step_for_stage
@@ -162,15 +163,89 @@ def dispatch_job_group(
     return group_id, jobs
 
 
-def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
+def _source_payload(project: Project) -> dict[str, Any]:
     source_type = project.source_type.value if hasattr(project.source_type, "value") else str(project.source_type)
-    _, jobs = dispatch_job_group(
-        db,
-        project,
-        stage,
-        [{"source_type": source_type, "source_ref": project.source_ref}],
-    )
+    return {"source_type": source_type, "source_ref": project.source_ref}
+
+
+def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
+    _, jobs = dispatch_job_group(db, project, stage, [_source_payload(project)])
     return jobs[0]
+
+
+def stage_to_retry(project: Project, recent_jobs: list[Job]) -> ProjectStage | None:
+    """Estágio de trabalho a reexecutar: o atual, ou o do último job se o projeto ficou em `failed`."""
+    current = parse_stage(project.current_stage)
+    if step_for_stage(current) is not None:
+        return current
+    if current is ProjectStage.FAILED:
+        for job in recent_jobs:
+            stage = parse_stage(job.stage)
+            if step_for_stage(stage) is not None:
+                return stage
+    return None
+
+
+def _payloads_for_retry(project: Project, recent_jobs: list[Job], stage: ProjectStage) -> list[dict[str, Any]]:
+    matching = [job for job in recent_jobs if parse_stage(job.stage) is stage]
+    if matching and matching[0].job_group_id is not None:
+        group_id = matching[0].job_group_id
+        grouped = [job for job in recent_jobs if job.job_group_id == group_id]
+        payloads = [dict(job.payload or {}) for job in grouped]
+        if payloads:
+            return payloads
+    if matching and matching[0].payload:
+        return [dict(matching[0].payload)]
+    return [_source_payload(project)]
+
+
+def retry_stage(
+    project_id: UUID | str,
+    db: Session | None = None,
+) -> AdvanceResult:
+    """Reenfileira o job do estágio de trabalho atual após falha (retries esgotados)."""
+    session, owns = _session(db)
+    try:
+        project = _load_project(session, project_id)
+        current = parse_stage(project.current_stage)
+        if current is ProjectStage.PUBLISHED or project.status is ProjectStatus.COMPLETED:
+            raise IllegalTransition("projeto já publicado")
+        if project.status is ProjectStatus.CANCELLED:
+            raise IllegalTransition("projeto cancelado")
+        if project.status is not ProjectStatus.FAILED and current is not ProjectStage.FAILED:
+            raise IllegalTransition("retry só é permitido após falha")
+
+        jobs = list(
+            session.scalars(
+                select(Job)
+                .where(Job.project_id == project.id)
+                .order_by(Job.created_at.desc())
+            ).all()
+        )
+        stage = stage_to_retry(project, jobs)
+        if stage is None:
+            raise IllegalTransition("não há estágio de trabalho para reexecutar")
+
+        payloads = _payloads_for_retry(project, jobs, stage)
+        project.current_stage = stage
+        project.status = ProjectStatus.RUNNING
+        project.updated_at = _now()
+        _, created = dispatch_job_group(session, project, stage, payloads)
+        session.commit()
+        return AdvanceResult(
+            project_id=project.id,
+            from_stage=stage,
+            to_stage=stage,
+            status=project.status,
+            paused_for_review=False,
+            dispatched_job_id=created[0].id,
+        )
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
 
 
 def advance_stage(
@@ -266,7 +341,8 @@ def mark_running(db: Session, job: Job, project: Project, step: QueueStep) -> No
 
 
 def fail_project(db: Session, project: Project, error: str) -> None:
-    project.current_stage = ProjectStage.FAILED
+    """Marca o projeto como falho sem sair do estágio de trabalho (retry-stage precisa dele)."""
+    _ = error
     project.status = ProjectStatus.FAILED
     project.updated_at = _now()
     db.commit()
