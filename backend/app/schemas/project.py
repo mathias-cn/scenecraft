@@ -80,6 +80,10 @@ def normalize_automation_config(
     if mode not in AUDIO_GENERATION_MODES:
         raise ValueError("audio_generation_mode deve ser 'elevenlabs' ou 'user_upload'")
     merged["audio_generation_mode"] = "elevenlabs" if merged["reuse_original_audio"] else mode
+    if "ken_burns" not in merged:
+        merged["ken_burns"] = True
+    else:
+        merged["ken_burns"] = merged.get("ken_burns") in _TRUE_VALUES
     return merged
 
 

@@ -1,6 +1,10 @@
+from app.core.scene_clips import gere_clipes_projeto
 from app.tasks.base import pipeline_task
 
 
-@pipeline_task(name="scenecraft.render")
-def render(_self, _db, job, project) -> dict:
-    return {"title": project.title, "job_id": str(job.id)}
+@pipeline_task(name="scenecraft.render", provider=None)
+def render(_self, db, job, project) -> dict:
+    result = gere_clipes_projeto(project.id, db=db)
+    result["title"] = project.title
+    result["job_id"] = str(job.id)
+    return result

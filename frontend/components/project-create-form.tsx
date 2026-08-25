@@ -80,6 +80,7 @@ export function ProjectCreateForm() {
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation);
   const [reuseOriginalAudio, setReuseOriginalAudio] = useState(false);
   const [audioGenerationMode, setAudioGenerationMode] = useState<AudioGenerationMode>("elevenlabs");
+  const [kenBurns, setKenBurns] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const needsFile = sourceType !== "youtube_link";
@@ -120,6 +121,7 @@ export function ProjectCreateForm() {
             audioGenerationMode,
             imageModel,
             imageQuality,
+            kenBurns,
           }),
           image_provider: imageProvider,
           character_id: characterId || undefined,
@@ -349,6 +351,25 @@ export function ProjectCreateForm() {
           onModelChange={setImageModel}
           onQualityChange={setImageQuality}
         />
+      </section>
+
+      <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
+        <p className="label-tech">Render</p>
+        <label className="mt-4 flex items-start gap-3 text-sm text-white/80">
+          <input
+            type="checkbox"
+            checked={kenBurns}
+            onChange={(event) => setKenBurns(event.target.checked)}
+            className="mt-1 h-4 w-4 rounded border-white/20 bg-ink-950 text-brass-500"
+          />
+          <span>
+            Efeito Ken Burns nas cenas
+            <span className="mt-1 block font-mono text-[10px] tracking-wide text-white/35">
+              Zoom suave de 1.00 até 1.15 nas imagens estáticas (25 fps). Desmarque para deixar a
+              cena parada.
+            </span>
+          </span>
+        </label>
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">

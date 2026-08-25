@@ -104,11 +104,12 @@ export function toAutomationPayload(
   imageProvider: ImageProviderName = "higgsfield",
   sceneStyleId?: string,
   characterId?: string,
-  extras?: {
+    extras?: {
     reuseOriginalAudio?: boolean;
     audioGenerationMode?: AudioGenerationMode;
     imageModel?: string;
     imageQuality?: ImageQuality;
+    kenBurns?: boolean;
   },
 ): Record<string, unknown> {
   const reuse = Boolean(extras?.reuseOriginalAudio);
@@ -120,6 +121,7 @@ export function toAutomationPayload(
     image_provider: imageProvider,
     reuse_original_audio: reuse,
     audio_generation_mode: reuse ? "elevenlabs" : (extras?.audioGenerationMode ?? "elevenlabs"),
+    ken_burns: extras?.kenBurns !== false,
     ...(imageModel ? { image_model: imageModel } : {}),
     ...(imageProvider === "openai" ? { image_quality: extras?.imageQuality ?? DEFAULT_IMAGE_QUALITY } : {}),
     ...(characterId ? { character_id: characterId } : {}),
@@ -143,4 +145,9 @@ export function configBool(config: Record<string, unknown> | undefined, key: str
 
 export function audioGenerationModeOf(config: Record<string, unknown> | undefined): AudioGenerationMode {
   return config?.audio_generation_mode === "user_upload" ? "user_upload" : "elevenlabs";
+}
+
+export function kenBurnsEnabled(config: Record<string, unknown> | undefined): boolean {
+  if (config == null || !("ken_burns" in config)) return true;
+  return configBool(config, "ken_burns");
 }

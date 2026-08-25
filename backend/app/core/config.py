@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     provider_concurrency_youtube: int = Field(default=1, ge=1, le=32)
     provider_concurrency_r2: int = Field(default=4, ge=1, le=32)
 
+    render_clip_concurrency: int = Field(default=2, ge=1, le=8)
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
