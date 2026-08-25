@@ -1,5 +1,6 @@
 export const NAV_ITEMS = [
   { href: "/projects", label: "Projetos" },
+  { href: "/styles", label: "Estilos" },
   { href: "/settings", label: "Configurações" },
 ] as const;
 

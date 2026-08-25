@@ -5,11 +5,12 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
-import { IconClose, IconMenu, IconProjects, IconSettings } from "@/components/icons";
+import { IconClose, IconMenu, IconProjects, IconSettings, IconStyles } from "@/components/icons";
 import { NAV_ITEMS, titleForPath } from "@/lib/nav";
 
 const ICONS = {
   "/projects": IconProjects,
+  "/styles": IconStyles,
   "/settings": IconSettings,
 } as const;
 

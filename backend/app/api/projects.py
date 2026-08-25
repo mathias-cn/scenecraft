@@ -281,6 +281,8 @@ def patch_media_settings(
         config["image_model"] = payload.image_model
     if payload.image_quality is not None:
         config["image_quality"] = payload.image_quality
+    if payload.scene_style is not None:
+        config["scene_style"] = payload.scene_style
     try:
         project.automation_config = normalize_automation_config(config)
         flag_modified(project, "automation_config")

@@ -92,12 +92,14 @@ export function defaultAutomation(): AutomationConfig {
 export function toAutomationPayload(
   flags: AutomationConfig,
   imageProvider: ImageProviderName = "higgsfield",
+  sceneStyle?: string,
 ): Record<string, unknown> {
   return {
     ...flags,
     auto_media: flags.auto_media_gen,
     auto_publish: flags.auto_description,
     image_provider: imageProvider,
+    ...(sceneStyle ? { scene_style: sceneStyle } : {}),
   };
 }
 

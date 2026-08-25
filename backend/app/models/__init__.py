@@ -16,6 +16,7 @@ from app.models.enums import (
 from app.models.job import Job
 from app.models.project import Project
 from app.models.scene import Scene
+from app.models.style import Style
 from app.models.thumbnail import Thumbnail
 from app.models.transcript_segment import TranscriptSegment
 from app.models.video_assembly import VideoAssembly
@@ -36,6 +37,7 @@ __all__ = [
     "Scene",
     "SceneStatus",
     "SourceType",
+    "Style",
     "Thumbnail",
     "ThumbnailSource",
     "TranscriptSegment",

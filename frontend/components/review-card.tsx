@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { ImageModelPicker } from "@/components/image-model-picker";
 import { ReviewStageBody, reviewTitle } from "@/components/review-stage-body";
+import { StyleSelect } from "@/components/style-select";
 import { TranscriptReview } from "@/components/transcript-review";
 import { advanceProject, getProject, patchMediaSettings } from "@/lib/api";
 import {
@@ -35,6 +36,9 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [imageModel, setImageModel] = useState(() => initialModel(project));
   const [imageQuality, setImageQuality] = useState<ImageQuality>(() => initialQuality(project));
+  const [sceneStyle, setSceneStyle] = useState(
+    () => configString(project.automation_config, "scene_style") ?? "",
+  );
   const isTranscript = project.current_stage === "transcript_review";
   const isSceneReview = project.current_stage === "scene_review";
 
@@ -43,12 +47,13 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
     setError(null);
     try {
       if (isSceneReview) {
-        const payload: { image_model?: string; image_quality?: string } = {};
+        const payload: { image_model?: string; image_quality?: string; scene_style?: string } = {};
         if (imageModel) payload.image_model = imageModel;
         if (imageProviderOf(project.automation_config) === "openai") {
           payload.image_quality = imageQuality;
         }
-        if (payload.image_model || payload.image_quality) {
+        if (sceneStyle) payload.scene_style = sceneStyle;
+        if (payload.image_model || payload.image_quality || payload.scene_style) {
           await patchMediaSettings(project.id, payload);
         }
       }
@@ -82,13 +87,23 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
         <>
           <ReviewStageBody project={project} />
           {isSceneReview ? (
-            <ImageModelPicker
-              project={project}
-              model={imageModel}
-              quality={imageQuality}
-              onModelChange={setImageModel}
-              onQualityChange={setImageQuality}
-            />
+            <>
+              <div className="mt-5 rounded-lg border border-white/10 bg-ink-950/50 p-4">
+                <StyleSelect
+                  value={sceneStyle}
+                  onChange={setSceneStyle}
+                  includeSlug={configString(project.automation_config, "scene_style")}
+                  hint="Somente estilos ativos aparecem na criação; um estilo já salvo no projeto continua visível mesmo inativo."
+                />
+              </div>
+              <ImageModelPicker
+                project={project}
+                model={imageModel}
+                quality={imageQuality}
+                onModelChange={setImageModel}
+                onQualityChange={setImageQuality}
+              />
+            </>
           ) : null}
           {error ? (
             <p className="mt-4 font-mono text-xs text-red-300">{error}</p>

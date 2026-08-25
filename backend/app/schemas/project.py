@@ -47,6 +47,13 @@ def normalize_automation_config(
         merged["image_model"] = str(model).strip()
     elif model:
         merged["image_model"] = str(model).strip()
+    scene_style = merged.get("scene_style")
+    if scene_style is not None:
+        text = str(scene_style).strip()
+        if text:
+            merged["scene_style"] = text
+        else:
+            merged.pop("scene_style", None)
     return merged
 
 
@@ -95,6 +102,7 @@ class TranscriptPatchRequest(BaseModel):
 class MediaSettingsPatch(BaseModel):
     image_model: str | None = None
     image_quality: str | None = None
+    scene_style: str | None = None
 
     @field_validator("image_quality")
     @classmethod

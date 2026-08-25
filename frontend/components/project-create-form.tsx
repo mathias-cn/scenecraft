@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { StyleSelect } from "@/components/style-select";
 import { createProject } from "@/lib/api";
 import {
   AUTOMATION_TOGGLES,
@@ -62,6 +63,7 @@ export function ProjectCreateForm() {
   const [sourceRef, setSourceRef] = useState("");
   const [language, setLanguage] = useState<TranscriptLanguage>("original");
   const [imageProvider, setImageProvider] = useState<ImageProviderName>("higgsfield");
+  const [sceneStyle, setSceneStyle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function ProjectCreateForm() {
           source_type: sourceType,
           source_ref: needsFile ? undefined : sourceRef.trim(),
           target_language: language,
-          automation_config: toAutomationPayload(automation, imageProvider),
+          automation_config: toAutomationPayload(automation, imageProvider, sceneStyle),
           image_provider: imageProvider,
         },
         file,
@@ -203,6 +205,10 @@ export function ProjectCreateForm() {
             );
           })}
         </fieldset>
+      </section>
+
+      <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
+        <StyleSelect value={sceneStyle} onChange={setSceneStyle} />
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">

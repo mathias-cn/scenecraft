@@ -54,6 +54,14 @@ export type ImageModelOption = {
   name: string;
 };
 
+export type Style = {
+  id: string;
+  name: string;
+  slug: string;
+  active: boolean;
+  created_at: string;
+};
+
 export type Scene = {
   id: string;
   index: number;

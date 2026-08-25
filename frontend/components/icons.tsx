@@ -13,6 +13,16 @@ export function IconProjects({ className }: IconProps) {
   );
 }
 
+export function IconStyles({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <circle cx="7" cy="8" r="2.4" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="13" cy="7" r="2.1" stroke="currentColor" strokeWidth="1.4" />
+      <circle cx="11.5" cy="13" r="2.6" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
 export function IconSettings({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>

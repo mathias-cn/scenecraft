@@ -1,10 +1,11 @@
-import { apiGet, apiPatch, apiPost } from "./api-client";
+import { apiDelete, apiGet, apiPatch, apiPost } from "./api-client";
 import type {
   AdvanceResult,
   ImageModelOption,
   Project,
   ProjectCreate,
   ProjectDetail,
+  Style,
   TranscriptSegmentPatch,
 } from "./types";
 
@@ -56,7 +57,24 @@ export function listImageModels(projectId: string) {
 
 export function patchMediaSettings(
   id: string,
-  payload: { image_model?: string; image_quality?: string },
+  payload: { image_model?: string; image_quality?: string; scene_style?: string },
 ) {
   return apiPatch<ProjectDetail>(`/api/projects/${id}/media-settings`, payload);
+}
+
+export function listStyles(active?: boolean) {
+  const query = active === undefined ? "" : `?active=${active ? "true" : "false"}`;
+  return apiGet<Style[]>(`/api/styles${query}`);
+}
+
+export function createStyle(payload: { name: string; slug: string }) {
+  return apiPost<Style>("/api/styles", payload);
+}
+
+export function patchStyle(id: string, active: boolean) {
+  return apiPatch<Style>(`/api/styles/${id}`, { active });
+}
+
+export function deleteStyle(id: string) {
+  return apiDelete<void>(`/api/styles/${id}`);
 }
