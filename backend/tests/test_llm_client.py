@@ -115,10 +115,14 @@ def test_plan_scenes_returns_visual_prompts(monkeypatch):
             {"index": 1, "start_ms": 1000, "end_ms": 2000, "text": "mundo"},
         ],
         language="pt-BR",
+        character_description="heroína de casaco vermelho",
+        style_name="Anime",
     )
     assert scenes[0]["visual_prompt"].startswith("Wide shot")
     assert scenes[0]["source_segment_ids"] == [0, 1]
-    assert "scenes" in captured[0][0].lower() or "cenas" in captured[0][0].lower()
+    assert "heroína de casaco vermelho" in scenes[0]["visual_prompt"]
+    assert "Anime" in scenes[0]["visual_prompt"]
+    assert "character" in captured[0][1]
     assert "olá" in captured[0][1]
 
 

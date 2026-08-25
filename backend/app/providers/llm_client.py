@@ -131,12 +131,21 @@ def plan_scenes(
     segments: Sequence[Mapping[str, Any]],
     *,
     language: str = "pt-BR",
+    character_description: str | None = None,
+    style_name: str | None = None,
 ) -> list[dict[str, Any]]:
     """Agrupa transcript_segments em cenas com visual_prompt."""
-    payload = {
+    payload: dict[str, Any] = {
         "language": language,
         "segments": [_segment_payload(segment, index) for index, segment in enumerate(segments)],
     }
+    if character_description:
+        payload["character"] = {
+            "description": character_description,
+            "instruction": "Every visual_prompt must feature this same recurring character as the subject.",
+        }
+    if style_name:
+        payload["visual_style"] = style_name
     result = structured_completion(PLAN_SCENES_SYSTEM, json.dumps(payload, ensure_ascii=False))
     scenes = result.get("scenes")
     if not isinstance(scenes, list) or not scenes:
@@ -148,6 +157,10 @@ def plan_scenes(
         prompt = str(raw.get("visual_prompt") or "").strip()
         if not prompt:
             raise LLMJSONError(f"cena {index} sem visual_prompt")
+        if character_description and character_description.lower() not in prompt.lower():
+            prompt = f"{prompt.rstrip('.')}. Recurring character: {character_description.strip()}"
+        if style_name and style_name.lower() not in prompt.lower():
+            prompt = f"{prompt.rstrip('.')}. Visual style: {style_name.strip()}"
         ids = raw.get("source_segment_ids") or []
         if not isinstance(ids, list):
             ids = []

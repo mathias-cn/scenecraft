@@ -36,8 +36,12 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   const [error, setError] = useState<string | null>(null);
   const [imageModel, setImageModel] = useState(() => initialModel(project));
   const [imageQuality, setImageQuality] = useState<ImageQuality>(() => initialQuality(project));
+  const lockedByCharacter = Boolean(configString(project.automation_config, "character_id"));
   const [sceneStyle, setSceneStyle] = useState(
-    () => configString(project.automation_config, "scene_style") ?? "",
+    () =>
+      configString(project.automation_config, "scene_style_id") ??
+      configString(project.automation_config, "scene_style") ??
+      "",
   );
   const isTranscript = project.current_stage === "transcript_review";
   const isSceneReview = project.current_stage === "scene_review";
@@ -47,13 +51,20 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
     setError(null);
     try {
       if (isSceneReview) {
-        const payload: { image_model?: string; image_quality?: string; scene_style?: string } = {};
+        const payload: {
+          image_model?: string;
+          image_quality?: string;
+          scene_style?: string;
+          scene_style_id?: string;
+        } = {};
         if (imageModel) payload.image_model = imageModel;
         if (imageProviderOf(project.automation_config) === "openai") {
           payload.image_quality = imageQuality;
         }
-        if (sceneStyle) payload.scene_style = sceneStyle;
-        if (payload.image_model || payload.image_quality || payload.scene_style) {
+        if (!lockedByCharacter && sceneStyle) {
+          payload.scene_style_id = sceneStyle;
+        }
+        if (payload.image_model || payload.image_quality || payload.scene_style || payload.scene_style_id) {
           await patchMediaSettings(project.id, payload);
         }
       }
@@ -92,8 +103,18 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
                 <StyleSelect
                   value={sceneStyle}
                   onChange={setSceneStyle}
-                  includeSlug={configString(project.automation_config, "scene_style")}
-                  hint="Somente estilos ativos aparecem na criação; um estilo já salvo no projeto continua visível mesmo inativo."
+                  valueKind="id"
+                  includeSlug={
+                    configString(project.automation_config, "scene_style_id") ??
+                    configString(project.automation_config, "scene_style")
+                  }
+                  disabled={lockedByCharacter}
+                  label="Estilo das cenas"
+                  hint={
+                    lockedByCharacter
+                      ? "Travado no estilo do personagem deste projeto."
+                      : "Somente estilos ativos aparecem na criação; um estilo já salvo no projeto continua visível mesmo inativo."
+                  }
                 />
               </div>
               <ImageModelPicker

@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import ProjectNotFound
 from app.models.enums import MediaType, SceneStatus
@@ -47,7 +48,13 @@ def generate_scene_media(
         model = str(config.get("image_model") or default_image_model(provider_name))
         quality = str(config.get("image_quality") or DEFAULT_IMAGE_QUALITY)
         size = str(config.get("image_size") or DEFAULT_IMAGE_SIZE)
-        prompt = (scene.visual_prompt or "").strip()
+        character = load_project_character(session, config)
+        style = load_project_style(session, config)
+        prompt = enrich_visual_prompt(
+            scene.visual_prompt or "",
+            character=character,
+            style=style,
+        )
         if not prompt:
             raise ValueError(f"cena {scene.index} sem visual_prompt")
 
@@ -56,8 +63,20 @@ def generate_scene_media(
         session.flush()
 
         client = get_image_provider(provider_name)
+        reference_bytes = None
+        if (
+            provider_name == "openai"
+            and character is not None
+            and (character.base_image_url or "").strip()
+        ):
+            from app.core.generate_character import fetch_image_bytes
+
+            reference_bytes = fetch_image_bytes(character.base_image_url)
         with provider_semaphore.hold(provider_name):
-            result = client.generate_image(prompt, model=model, quality=quality, size=size)
+            if provider_name == "openai" and reference_bytes and hasattr(client, "edit_image"):
+                result = client.edit_image(prompt, reference_bytes, model=model, quality=quality, size=size)
+            else:
+                result = client.generate_image(prompt, model=model, quality=quality, size=size)
 
         if upload is None:
             from app.storage import upload_fileobj as upload

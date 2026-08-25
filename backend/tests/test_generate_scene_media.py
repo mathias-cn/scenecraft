@@ -14,9 +14,10 @@ from app.schemas.project import ProjectCreate
 
 
 class FakeDB:
-    def __init__(self, project, scene):
+    def __init__(self, project, scene, extra=None):
         self.project = project
         self.scene = scene
+        self.extra = extra or {}
         self.commits = 0
         self.rollbacks = 0
 
@@ -25,6 +26,9 @@ class FakeDB:
             return self.project if self.project.id == pid else None
         if model is Scene:
             return self.scene if self.scene.id == pid else None
+        extra = getattr(self, "extra", None) or {}
+        if extra.get(model) is not None and extra[model].id == pid:
+            return extra[model]
         return None
 
     def flush(self):
@@ -44,10 +48,15 @@ class FakeProvider:
     def __init__(self, name="openai"):
         self.name = name
         self.calls = []
+        self.edits = []
 
     def generate_image(self, prompt, **kwargs):
         self.calls.append((prompt, kwargs))
         return ImageResult(image_bytes=b"PNG", cost_usd=0.041)
+
+    def edit_image(self, prompt, image_bytes, **kwargs):
+        self.edits.append((prompt, image_bytes, kwargs))
+        return ImageResult(image_bytes=b"EDIT", cost_usd=0.041)
 
 
 def _scene_project(provider="openai"):
@@ -151,3 +160,71 @@ def test_project_create_rejects_unknown_provider():
             source_ref="https://youtu.be/x",
             image_provider="midjourney",
         )
+
+
+def test_generate_scene_media_openai_edits_with_character(monkeypatch):
+    from app.models.character import Character
+    from app.models.enums import CharacterStatus
+
+    project, scene = _scene_project("openai")
+    cid = uuid4()
+    project.automation_config["character_id"] = str(cid)
+    character = SimpleNamespace(
+        id=cid,
+        description_prompt="heroína de casaco vermelho",
+        style_id=uuid4(),
+        status=CharacterStatus.APPROVED,
+        base_image_url="https://cdn.example.com/base.png",
+        _model=Character,
+    )
+    db = FakeDB(project, scene, extra={Character: character})
+    fake = FakeProvider("openai")
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", lambda name: fake)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    monkeypatch.setattr("app.core.generate_character.fetch_image_bytes", lambda url: b"REF")
+    generate_scene_media(
+        project.id,
+        scene.id,
+        db=db,
+        upload=lambda *_a, **_k: "https://cdn.example.com/s.png",
+    )
+    assert fake.edits
+    assert fake.edits[0][1] == b"REF"
+    assert "heroína de casaco vermelho" in fake.edits[0][0]
+    assert not fake.calls
+
+
+def test_generate_scene_media_higgsfield_appends_character_text(monkeypatch):
+    from app.models.character import Character
+    from app.models.enums import CharacterStatus
+
+    project, scene = _scene_project("higgsfield")
+    cid = uuid4()
+    project.automation_config["character_id"] = str(cid)
+    character = SimpleNamespace(
+        id=cid,
+        description_prompt="heroína de casaco vermelho",
+        style_id=uuid4(),
+        status=CharacterStatus.APPROVED,
+        base_image_url="https://cdn.example.com/base.png",
+        _model=Character,
+    )
+    db = FakeDB(project, scene, extra={Character: character})
+    fake = FakeProvider("higgsfield")
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", lambda name: fake)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    generate_scene_media(
+        project.id,
+        scene.id,
+        db=db,
+        upload=lambda *_a, **_k: "https://cdn.example.com/h.png",
+    )
+    assert fake.calls
+    assert not fake.edits
+    assert "heroína de casaco vermelho" in fake.calls[0][0]

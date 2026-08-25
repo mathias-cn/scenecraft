@@ -21,6 +21,7 @@ type StyleSelectProps = {
   includeSlug?: string | null;
   label?: string;
   hint?: string;
+  disabled?: boolean;
 };
 
 export function StyleSelect({
@@ -30,6 +31,7 @@ export function StyleSelect({
   includeSlug,
   label = "Estilo visual",
   hint = "Usado na geração de cenas e personagens.",
+  disabled = false,
 }: StyleSelectProps) {
   const [styles, setStyles] = useState<Style[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -53,7 +55,9 @@ export function StyleSelect({
         setStyles(next);
         const selected = next.find((item) => matchesStyle(item, value) || matchesStyle(item, keep));
         const tokenOf = (item: Style) => (valueKind === "id" ? item.id : item.slug);
-        if (!value && next.length > 0) onChange(tokenOf(next[0]));
+        if (disabled) {
+          /* locked by parent (personagem) */
+        } else if (!value && next.length > 0) onChange(tokenOf(next[0]));
         else if (selected && tokenOf(selected) !== value) onChange(tokenOf(selected));
       } catch (err) {
         if (!cancelled) {
@@ -66,7 +70,7 @@ export function StyleSelect({
     return () => {
       cancelled = true;
     };
-  }, [includeSlug, valueKind]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [includeSlug, valueKind, disabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <label className="label-tech block">
@@ -74,8 +78,8 @@ export function StyleSelect({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        disabled={loading || styles.length === 0}
-        className={FIELD}
+        disabled={disabled || loading || styles.length === 0}
+        className={`${FIELD} disabled:cursor-not-allowed disabled:opacity-50`}
       >
         {styles.map((item) => (
           <option key={item.id} value={valueKind === "id" ? item.id : item.slug}>

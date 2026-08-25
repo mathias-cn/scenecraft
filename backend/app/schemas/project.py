@@ -54,6 +54,15 @@ def normalize_automation_config(
             merged["scene_style"] = text
         else:
             merged.pop("scene_style", None)
+    for key in ("character_id", "scene_style_id"):
+        raw = merged.get(key)
+        if raw is None or str(raw).strip() == "":
+            merged.pop(key, None)
+            continue
+        try:
+            merged[key] = str(uuid.UUID(str(raw).strip()))
+        except ValueError as exc:
+            raise ValueError(f"{key} deve ser um UUID") from exc
     return merged
 
 
@@ -64,14 +73,23 @@ class ProjectCreate(BaseModel):
     target_language: str = Field(default="pt-BR", min_length=2, max_length=16)
     automation_config: dict[str, Any] = Field(default_factory=dict)
     image_provider: str | None = None
+    character_id: uuid.UUID | None = None
+    scene_style_id: uuid.UUID | None = None
 
-    @field_validator("source_ref", mode="before")
+    @field_validator("source_ref", "image_provider", mode="before")
     @classmethod
-    def blank_source_ref_to_none(cls, value: Any) -> str | None:
+    def blank_to_none_optional(cls, value: Any) -> str | None:
         if value is None:
             return None
         text = str(value).strip()
         return text or None
+
+    @field_validator("character_id", "scene_style_id", mode="before")
+    @classmethod
+    def blank_uuid_to_none(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return value
 
     @model_validator(mode="after")
     def youtube_requires_ref(self):
@@ -103,6 +121,14 @@ class MediaSettingsPatch(BaseModel):
     image_model: str | None = None
     image_quality: str | None = None
     scene_style: str | None = None
+    scene_style_id: uuid.UUID | None = None
+
+    @field_validator("scene_style_id", mode="before")
+    @classmethod
+    def blank_style_id(cls, value: Any) -> Any:
+        if value is None or value == "":
+            return None
+        return value
 
     @field_validator("image_quality")
     @classmethod

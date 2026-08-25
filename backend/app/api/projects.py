@@ -18,6 +18,7 @@ from app.core.ingest import (
     resolve_source_ref,
     sanitize_filename,
 )
+from app.core.project_cast import ProjectCastError, apply_cast_to_config
 from app.core.state_machine import (
     IllegalTransition,
     ProjectNotFound,
@@ -72,6 +73,8 @@ async def parse_create_input(request: Request) -> CreateProjectInput:
                 target_language=str(form.get("target_language") or "pt-BR"),
                 automation_config=parse_automation_config(form.get("automation_config")),
                 image_provider=str(form.get("image_provider") or "") or None,
+                character_id=str(form.get("character_id") or "") or None,
+                scene_style_id=str(form.get("scene_style_id") or "") or None,
             )
         except (IngestError, ValidationError) as exc:
             _raise_create_validation(exc)
@@ -163,13 +166,29 @@ def create_project(parsed: CreateInputDep, db: DbDep) -> ProjectRead:
             detail="source_ref ausente após o upload",
         )
 
+    try:
+        automation_config = apply_cast_to_config(
+            db,
+            payload.automation_config,
+            character_id=payload.character_id,
+            scene_style_id=payload.scene_style_id,
+        )
+        automation_config = normalize_automation_config(
+            automation_config,
+            image_provider=payload.image_provider,
+        )
+    except ProjectCastError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
     project = Project(
         id=project_id,
         title=payload.title,
         source_type=payload.source_type,
         source_ref=source_ref,
         target_language=payload.target_language,
-        automation_config=payload.automation_config,
+        automation_config=automation_config,
         current_stage=ProjectStage.CREATED,
         status=ProjectStatus.PENDING,
     )
@@ -281,12 +300,20 @@ def patch_media_settings(
         config["image_model"] = payload.image_model
     if payload.image_quality is not None:
         config["image_quality"] = payload.image_quality
-    if payload.scene_style is not None:
-        config["scene_style"] = payload.scene_style
+    if not config.get("character_id"):
+        if payload.scene_style is not None:
+            config["scene_style"] = payload.scene_style
+        if payload.scene_style_id is not None:
+            config["scene_style_id"] = str(payload.scene_style_id)
     try:
+        config = apply_cast_to_config(
+            db,
+            config,
+            scene_style_id=payload.scene_style_id if not config.get("character_id") else None,
+        )
         project.automation_config = normalize_automation_config(config)
         flag_modified(project, "automation_config")
-    except ValueError as exc:
+    except (ProjectCastError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     db.commit()
     project = _detail_query(db, project_id)

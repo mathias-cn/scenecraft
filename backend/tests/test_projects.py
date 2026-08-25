@@ -116,3 +116,31 @@ def test_project_detail_sorts_scenes():
     )
     assert [scene.index for scene in detail.scenes] == [1, 2]
     assert isinstance(detail, ProjectRead)
+
+
+def test_project_create_accepts_optional_character_and_style_ids():
+    from uuid import uuid4
+
+    cid = uuid4()
+    sid = uuid4()
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        character_id=cid,
+        scene_style_id=sid,
+    )
+    assert payload.character_id == cid
+    assert payload.scene_style_id == sid
+
+
+def test_project_create_blank_cast_ids_become_none():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        character_id="",
+        scene_style_id="",
+    )
+    assert payload.character_id is None
+    assert payload.scene_style_id is None

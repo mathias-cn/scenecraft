@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { CharacterSelect } from "@/components/character-select";
 import { StyleSelect } from "@/components/style-select";
 import { createProject } from "@/lib/api";
 import {
@@ -63,7 +64,9 @@ export function ProjectCreateForm() {
   const [sourceRef, setSourceRef] = useState("");
   const [language, setLanguage] = useState<TranscriptLanguage>("original");
   const [imageProvider, setImageProvider] = useState<ImageProviderName>("higgsfield");
-  const [sceneStyle, setSceneStyle] = useState("");
+  const [sceneStyleId, setSceneStyleId] = useState("");
+  const [characterId, setCharacterId] = useState("");
+  const [lockedStyleId, setLockedStyleId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation);
   const [error, setError] = useState<string | null>(null);
@@ -96,8 +99,10 @@ export function ProjectCreateForm() {
           source_type: sourceType,
           source_ref: needsFile ? undefined : sourceRef.trim(),
           target_language: language,
-          automation_config: toAutomationPayload(automation, imageProvider, sceneStyle),
+          automation_config: toAutomationPayload(automation, imageProvider, sceneStyleId, characterId),
           image_provider: imageProvider,
+          character_id: characterId || undefined,
+          scene_style_id: sceneStyleId || undefined,
         },
         file,
       );
@@ -208,7 +213,34 @@ export function ProjectCreateForm() {
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
-        <StyleSelect value={sceneStyle} onChange={setSceneStyle} />
+        <CharacterSelect
+          value={characterId}
+          onChange={(character) => {
+            setCharacterId(character?.id ?? "");
+            if (character) {
+              const styleId = character.style_id || character.style?.id || "";
+              setLockedStyleId(styleId);
+              if (styleId) setSceneStyleId(styleId);
+            } else {
+              setLockedStyleId(null);
+            }
+          }}
+        />
+        <div className="mt-6 border-t border-white/[0.06] pt-5">
+          <StyleSelect
+            value={sceneStyleId}
+            onChange={setSceneStyleId}
+            valueKind="id"
+            includeSlug={lockedStyleId}
+            disabled={Boolean(characterId)}
+            label="Estilo das cenas"
+            hint={
+              characterId
+                ? "Travado no estilo do personagem selecionado."
+                : "Usado na geração das cenas deste projeto."
+            }
+          />
+        </div>
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">

@@ -14,10 +14,13 @@ STYLE_IN_USE_MESSAGE = "Este estilo está em uso e não pode ser excluído, apen
 
 
 def scene_style_matches(config: dict | None, *, slug: str, style_id: str) -> bool:
-    raw = (config or {}).get("scene_style")
-    if raw is None or str(raw).strip() == "":
-        return False
-    return str(raw).strip() in {slug, style_id}
+    data = config or {}
+    tokens = {
+        str(data.get("scene_style") or "").strip(),
+        str(data.get("scene_style_id") or "").strip(),
+    }
+    tokens.discard("")
+    return bool(tokens & {slug, style_id})
 
 
 def _projects_use_style(db: Session, style: Style) -> bool:

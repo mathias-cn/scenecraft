@@ -31,6 +31,8 @@ export function createProject(payload: ProjectCreate, file?: File | null) {
     form.append("automation_config", JSON.stringify(payload.automation_config ?? {}));
     if (payload.source_ref) form.append("source_ref", payload.source_ref);
     if (payload.image_provider) form.append("image_provider", payload.image_provider);
+    if (payload.character_id) form.append("character_id", payload.character_id);
+    if (payload.scene_style_id) form.append("scene_style_id", payload.scene_style_id);
     form.append("file", file);
     return apiPost<Project>("/api/projects", form);
   }
@@ -59,7 +61,7 @@ export function listImageModels(projectId: string) {
 
 export function patchMediaSettings(
   id: string,
-  payload: { image_model?: string; image_quality?: string; scene_style?: string },
+  payload: { image_model?: string; image_quality?: string; scene_style?: string; scene_style_id?: string },
 ) {
   return apiPatch<ProjectDetail>(`/api/projects/${id}/media-settings`, payload);
 }

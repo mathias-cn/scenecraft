@@ -47,6 +47,8 @@ export type ProjectCreate = {
   target_language: string;
   automation_config?: Record<string, unknown>;
   image_provider?: "higgsfield" | "openai";
+  character_id?: string;
+  scene_style_id?: string;
 };
 
 export type ImageModelOption = {
