@@ -22,7 +22,7 @@ from app.core.scene_clips import (
     spec_from_scene,
 )
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
-from app.models.enums import AssemblyStatus, ProjectStage
+from app.models.enums import AssemblyStatus, ProjectStage, ProjectStatus
 from app.models.project import Project
 
 
@@ -260,6 +260,47 @@ def _advance_rendering(session: Session, project: Project) -> bool:
         return True
     except IllegalTransition:
         return False
+
+
+def enqueue_render_regenerate(
+    project_id: str | UUID,
+    db: Session | None = None,
+    *,
+    send_task=None,
+) -> dict:
+    """Dispara render_video de novo em render_review, sem avançar o estágio."""
+    session, owns = _session(db)
+    try:
+        pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
+        project = session.get(Project, pid)
+        if project is None:
+            raise ProjectNotFound(str(pid))
+        if (
+            parse_stage(project.current_stage) is not ProjectStage.RENDER_REVIEW
+            or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
+        ):
+            raise IllegalTransition("render só pode ser regenerado em render_review")
+        assembly = ensure_video_assembly(session, project)
+        if assembly.status is AssemblyStatus.RENDERING:
+            raise IllegalTransition("render já em andamento")
+        assembly.status = AssemblyStatus.RENDERING
+        session.flush()
+        enqueue = send_task
+        if enqueue is None:
+            from app.celery_app import celery_app
+
+            enqueue = celery_app.send_task
+        enqueue("scenecraft.render_video", args=[str(project.id)], queue="render")
+        if owns:
+            session.commit()
+        return {"project_id": str(project.id)}
+    except Exception:
+        if owns:
+            session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
 
 
 def _session(db: Session | None) -> tuple[Session, bool]:

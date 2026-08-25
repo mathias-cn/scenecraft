@@ -6,6 +6,7 @@ import pytest
 
 from app.core.render_video import (
     RenderError,
+    enqueue_render_regenerate,
     ffmpeg_concat_cmd,
     ffmpeg_mux_cmd,
     render_video,
@@ -296,6 +297,69 @@ def test_render_video_requires_final_audio(monkeypatch):
             exists=lambda *_a, **_k: False,
         )
     assert project.video_assembly.status is AssemblyStatus.FAILED
+
+
+def test_render_video_does_not_advance_from_render_review(monkeypatch):
+    scene = _scene()
+    assembly = _assembly(output_url="https://cdn.example.com/old.mp4")
+    project = _project([scene], assembly=assembly, current_stage=ProjectStage.RENDER_REVIEW)
+    monkeypatch.setattr("app.core.render_video.advance_stage", _stub_advance(project))
+
+    def fake_clip(spec, output_path=None, **_k):
+        path = Path(output_path)
+        path.write_bytes(b"clip")
+        return path
+
+    result = render_video(
+        project.id,
+        db=FakeDB(project),
+        gere_clipe=fake_clip,
+        download=_fake_download,
+        run=_fake_run,
+        upload=lambda *_a, **_k: "https://cdn.example.com/render.mp4",
+        exists=lambda *_a, **_k: False,
+    )
+    assert result["advanced"] is False
+    assert project.current_stage is ProjectStage.RENDER_REVIEW
+    assert project.video_assembly.output_url == "https://cdn.example.com/render.mp4"
+
+
+def test_enqueue_render_regenerate_queues_task_in_review():
+    from app.core.state_machine import IllegalTransition
+    from app.models.enums import ProjectStatus
+
+    assembly = _assembly(status=AssemblyStatus.COMPLETED, output_url="https://cdn.example.com/render.mp4")
+    project = _project(
+        [_scene()],
+        assembly=assembly,
+        current_stage=ProjectStage.RENDER_REVIEW,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
+    )
+    queued: list[tuple] = []
+    result = enqueue_render_regenerate(
+        project.id,
+        db=FakeDB(project),
+        send_task=lambda name, args=None, queue=None, **_k: queued.append((name, args, queue)),
+    )
+    assert result["project_id"] == str(project.id)
+    assert assembly.status is AssemblyStatus.RENDERING
+    assert queued == [("scenecraft.render_video", [str(project.id)], "render")]
+
+    with pytest.raises(IllegalTransition, match="já em andamento"):
+        enqueue_render_regenerate(
+            project.id,
+            db=FakeDB(project),
+            send_task=lambda *_a, **_k: None,
+        )
+
+    project.current_stage = ProjectStage.RENDERING
+    assembly.status = AssemblyStatus.COMPLETED
+    with pytest.raises(IllegalTransition, match="render_review"):
+        enqueue_render_regenerate(
+            project.id,
+            db=FakeDB(project),
+            send_task=lambda *_a, **_k: None,
+        )
 
 
 def test_celery_task_is_registered_with_project_id_signature():

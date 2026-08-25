@@ -11,6 +11,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
 from app.core.generate_scene_media import enqueue_scene_regenerate
+from app.core.render_video import enqueue_render_regenerate
 from app.core.ingest import (
     IngestError,
     assert_audio_upload_filename,
@@ -280,6 +281,22 @@ def regenerate_project_scene(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene not found")
     try:
         enqueue_scene_regenerate(project.id, scene.id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/render/regenerate")
+def regenerate_project_render(project_id: UUID, db: DbDep) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        enqueue_render_regenerate(project.id, db=db)
     except (ProjectNotFound, IllegalTransition) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()

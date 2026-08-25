@@ -60,14 +60,6 @@ function AudioReview({ project }: ReviewBodyProps) {
   );
 }
 
-function RenderReview({ project }: ReviewBodyProps) {
-  const url = project.video_assembly?.output_url;
-  if (!url) {
-    return <EmptyNote text="Montagem ainda não disponível." />;
-  }
-  return <video controls src={url} className="w-full rounded-lg bg-black" />;
-}
-
 function latest<T>(items: T[] | undefined): T | undefined {
   if (!items?.length) return undefined;
   return items[items.length - 1];
@@ -136,7 +128,15 @@ export function ReviewStageBody({ project }: ReviewBodyProps) {
     case "audio_review":
       return <AudioReview project={project} />;
     case "render_review":
-      return <RenderReview project={project} />;
+      return project.video_assembly?.output_url ? (
+        <video
+          controls
+          src={project.video_assembly.output_url}
+          className="aspect-video w-full rounded-lg bg-black"
+        />
+      ) : (
+        <EmptyNote text="Montagem ainda não disponível." />
+      );
     case "thumbnail_stage":
       return <ThumbnailReview project={project} />;
     case "description_stage":

@@ -81,6 +81,10 @@ export function regenerateScene(projectId: string, sceneId: string) {
   return apiPost<ProjectDetail>(`/api/projects/${projectId}/scenes/${sceneId}/regenerate`);
 }
 
+export function regenerateRender(id: string) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/render/regenerate`);
+}
+
 export function listStyles(active?: boolean) {
   const query = active === undefined ? "" : `?active=${active ? "true" : "false"}`;
   return apiGet<Style[]>(`/api/styles${query}`);
