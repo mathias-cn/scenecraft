@@ -4,6 +4,7 @@
 - agrupar transcript em scenes (só source_segment_ids + visual_prompt)
 - traduzir cada segmento (preservando start_ms/end_ms)
 - gerar a descrição do vídeo a partir do transcript completo
+- resumir o vídeo e montar o prompt da thumbnail
 """
 
 from __future__ import annotations
@@ -54,6 +55,22 @@ Regras:
 - Tema e tom similares ao rascunho; não fuja do assunto.
 - Curtos, específicos, sem aspas, sem numeração, sem hashtag.
 - Cada título cabe em uma linha (no máximo ~70 caracteres)."""
+
+SUMMARY_SYSTEM = """Você resume o conteúdo de um vídeo a partir do transcript.
+Responda só com um objeto JSON na forma:
+{"summary":"..."}
+Regras:
+- summary em 2–4 frases, no idioma pedido.
+- Foque no tema, no gancho e na conclusão; sem timestamps nem lista de cenas."""
+
+THUMBNAIL_PROMPT_SYSTEM = """Você cria um prompt de imagem para thumbnail de YouTube.
+Responda só com um objeto JSON na forma:
+{"prompt":"..."}
+Regras:
+- prompt em inglês, cinematográfico, alto contraste, composição 16:9 (1280x720).
+- Sem texto na imagem (no titles, captions, letters or watermarks).
+- Sujeito nítido, expressão chamativa, fundo simples e legível em miniatura.
+- Se o JSON trouxer personagem ou estilo, inclua-os no prompt."""
 
 DEFAULT_TITLE_MODEL = "gpt-5-nano"
 
@@ -310,6 +327,51 @@ def generate_description(
         "text": text,
         "title": str(result.get("title") or title).strip() or title,
     }
+
+
+def summarize_video(
+    *,
+    title: str,
+    transcript: str,
+    language: str = "pt-BR",
+) -> str:
+    """Resume o vídeo a partir do transcript completo."""
+    text = (transcript or "").strip()
+    if not text:
+        raise LLMError("transcript vazio para resumir")
+    payload = {"title": title, "language": language, "transcript": text}
+    result = structured_completion(SUMMARY_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    summary = str(result.get("summary") or result.get("text") or "").strip()
+    if not summary:
+        raise LLMJSONError("JSON de resumo deve conter 'summary'")
+    return summary
+
+
+def thumbnail_prompt(
+    *,
+    summary: str,
+    title: str,
+    character_description: str | None = None,
+    style_name: str | None = None,
+) -> str:
+    """Monta um prompt de thumbnail chamativa a partir do resumo do vídeo."""
+    text = (summary or "").strip()
+    if not text:
+        raise LLMError("resumo vazio para thumbnail")
+    payload: dict[str, Any] = {
+        "title": title,
+        "summary": text,
+        "instruction": "YouTube thumbnail, 16:9, no text in the image.",
+    }
+    if character_description:
+        payload["character"] = character_description
+    if style_name:
+        payload["visual_style"] = style_name
+    result = structured_completion(THUMBNAIL_PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    prompt = str(result.get("prompt") or result.get("visual_prompt") or "").strip()
+    if not prompt:
+        raise LLMJSONError("JSON de thumbnail deve conter 'prompt'")
+    return prompt
 
 
 def title_model() -> str:

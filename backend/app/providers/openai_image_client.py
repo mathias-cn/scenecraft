@@ -125,7 +125,7 @@ class OpenAIImageClient(ImageProvider):
     def generate_image(self, prompt: str, **kwargs: Any) -> ImageResult:
         model = str(kwargs.get("model") or DEFAULT_OPENAI_MODEL)
         quality = str(kwargs.get("quality") or DEFAULT_IMAGE_QUALITY)
-        size = str(kwargs.get("size") or DEFAULT_IMAGE_SIZE)
+        size = _normalize_size(str(kwargs.get("size") or DEFAULT_IMAGE_SIZE))
         text = (prompt or "").strip()
         if not text:
             raise ImageProviderError("prompt vazio")
@@ -149,7 +149,7 @@ class OpenAIImageClient(ImageProvider):
         """Edita/varia uma imagem de referência (`client.images.edit`)."""
         model = str(kwargs.get("model") or DEFAULT_OPENAI_MODEL)
         quality = str(kwargs.get("quality") or DEFAULT_IMAGE_QUALITY)
-        size = str(kwargs.get("size") or DEFAULT_IMAGE_SIZE)
+        size = _normalize_size(str(kwargs.get("size") or DEFAULT_IMAGE_SIZE))
         text = (prompt or "").strip()
         if not text:
             raise ImageProviderError("prompt vazio")

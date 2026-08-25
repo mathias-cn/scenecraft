@@ -53,6 +53,13 @@ def test_generate_image_decodes_base64():
     assert recorder[0][1]["size"] == "1536x1024"
 
 
+def test_generate_image_maps_thumbnail_size_to_landscape():
+    recorder: list = []
+    client = OpenAIImageClient(client=_client(recorder=recorder))
+    client.generate_image("thumb", size="1280x720")
+    assert recorder[0][1]["size"] == "1536x1024"
+
+
 def test_module_generate_image_returns_bytes(monkeypatch):
     monkeypatch.setattr(
         "app.providers.openai_image_client.OpenAIImageClient.generate_image",

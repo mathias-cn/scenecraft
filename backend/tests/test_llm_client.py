@@ -255,3 +255,47 @@ def test_generate_titles_requires_three_items(monkeypatch):
     )
     with pytest.raises(LLMJSONError, match="3 títulos"):
         generate_titles("rascunho")
+
+
+def test_summarize_video_returns_summary(monkeypatch):
+    from app.providers.llm_client import summarize_video
+
+    captured: list[tuple[str, str]] = []
+
+    def fake_completion(system_prompt: str, user_content: str, *, model: str | None = None) -> dict:
+        captured.append((system_prompt, user_content))
+        return {"summary": "Uma caminhada pela floresta ao amanhecer."}
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    summary = summarize_video(title="Forest", transcript="we walked into the woods", language="pt-BR")
+    assert "floresta" in summary.lower()
+    assert "transcript" in captured[0][1]
+    assert "SUMMARY" in captured[0][0] or "resume" in captured[0][0].lower()
+
+
+def test_summarize_video_rejects_empty():
+    from app.providers.llm_client import summarize_video
+
+    with pytest.raises(LLMError, match="vazio"):
+        summarize_video(title="x", transcript="  ")
+
+
+def test_thumbnail_prompt_uses_summary(monkeypatch):
+    from app.providers.llm_client import thumbnail_prompt
+
+    captured: list[str] = []
+
+    def fake_completion(system_prompt: str, user_content: str, *, model: str | None = None) -> dict:
+        captured.append(user_content)
+        return {"prompt": "cinematic close-up of a hiker in mist, 16:9"}
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    prompt = thumbnail_prompt(
+        summary="A walk through a misty forest.",
+        title="Forest walk",
+        character_description="red-coated heroine",
+        style_name="cinematic",
+    )
+    assert "hiker" in prompt
+    assert "misty forest" in captured[0]
+    assert "red-coated heroine" in captured[0]
