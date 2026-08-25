@@ -16,13 +16,16 @@ def tokenize(text: str) -> list[str]:
     return _WORD.findall((text or "").lower())
 
 
-def segment_script(segment: Any) -> str:
-    translated = str(getattr(segment, "text_translated", None) or "").strip()
+def segment_script(segment: Any, *, use_translated: bool = False) -> str:
     original = str(getattr(segment, "text_original", None) or getattr(segment, "text", None) or "").strip()
-    return translated or original
+    translated = str(getattr(segment, "text_translated", None) or "").strip()
+    if use_translated:
+        return translated or original
+    return original
 
 
-def scene_script(scene: Any, segments_by_index: dict[int, Any]) -> str:
+def scene_script(scene: Any, segments_by_index: dict[int, Any], *, use_translated: bool = False) -> str:
+    """Texto da cena via source_segment_ids (transcript original) ou visual_prompt."""
     parts: list[str] = []
     for raw in list(getattr(scene, "source_segment_ids", None) or []):
         try:
@@ -32,7 +35,7 @@ def scene_script(scene: Any, segments_by_index: dict[int, Any]) -> str:
         segment = segments_by_index.get(index)
         if segment is None:
             continue
-        text = segment_script(segment)
+        text = segment_script(segment, use_translated=use_translated)
         if text:
             parts.append(text)
     if parts:
@@ -92,6 +95,8 @@ def align_scene_times(
     scenes: Sequence[Any],
     original_segments: Sequence[Any],
     new_segments: Sequence[Segment],
+    *,
+    use_translated: bool = False,
 ) -> list[tuple[int, int]]:
     """Devolve (start_ms, end_ms) alinhados para cada cena, na mesma ordem."""
     timed = words_with_times(new_segments)
@@ -110,10 +115,11 @@ def align_scene_times(
         except (TypeError, ValueError, AttributeError):
             continue
 
-    spans: list[tuple[int, int]] = []
+    ordered = sorted(scenes, key=lambda item: int(getattr(item, "index", 0) or 0))
+    spans_by_id: dict[int, tuple[int, int]] = {}
     cursor = 0
-    for scene in scenes:
-        needle = tokenize(scene_script(scene, by_index))
+    for scene in ordered:
+        needle = tokenize(scene_script(scene, by_index, use_translated=use_translated))
         matched = find_word_span(haystack[cursor:], needle) if needle else None
         if matched is not None and timed:
             start_i, end_i = matched
@@ -121,7 +127,7 @@ def align_scene_times(
             end_i += cursor
             start_ms = timed[start_i][1]
             end_ms = timed[min(end_i, len(timed)) - 1][2]
-            cursor = start_i
+            cursor = end_i
         else:
             start_ms, end_ms = scale_span(
                 int(getattr(scene, "start_ms", 0) or 0),
@@ -131,16 +137,17 @@ def align_scene_times(
             )
         start_ms = max(start_ms, 0)
         end_ms = max(end_ms, start_ms + 1)
-        spans.append((start_ms, end_ms))
+        spans_by_id[id(scene)] = (start_ms, end_ms)
 
     prev_end = 0
-    normalized: list[tuple[int, int]] = []
-    for start_ms, end_ms in spans:
+    normalized_by_id: dict[int, tuple[int, int]] = {}
+    for scene in ordered:
+        start_ms, end_ms = spans_by_id[id(scene)]
         start_ms = max(start_ms, prev_end)
         end_ms = max(end_ms, start_ms + 1)
         if new_duration:
             end_ms = min(end_ms, new_duration)
             start_ms = min(start_ms, max(end_ms - 1, 0))
-        normalized.append((start_ms, end_ms))
+        normalized_by_id[id(scene)] = (start_ms, end_ms)
         prev_end = end_ms
-    return normalized
+    return [normalized_by_id[id(scene)] for scene in scenes]
