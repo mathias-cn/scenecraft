@@ -90,3 +90,11 @@ export function apiPost<T>(path: string, body?: unknown, init?: RequestInit): Pr
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
+
+export function apiPatch<T>(path: string, body?: unknown, init?: RequestInit): Promise<T> {
+  return apiFetch<T>(path, {
+    ...init,
+    method: "PATCH",
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+}

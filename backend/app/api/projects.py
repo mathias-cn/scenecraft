@@ -24,9 +24,17 @@ from app.core.state_machine import (
     retry_stage,
     start_pipeline,
 )
+from app.core.transcript_edits import TranscriptEditError, apply_transcript_edits
 from app.models.enums import ProjectStage, ProjectStatus, SourceType
 from app.models.project import Project
-from app.schemas.project import AdvanceRead, AdvanceRequest, ProjectCreate, ProjectDetail, ProjectRead
+from app.schemas.project import (
+    AdvanceRead,
+    AdvanceRequest,
+    ProjectCreate,
+    ProjectDetail,
+    ProjectRead,
+    TranscriptPatchRequest,
+)
 from app.storage import StorageError
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -194,6 +202,34 @@ def retry_project_stage(project_id: UUID, db: DbDep) -> AdvanceRead:
     except (ProjectNotFound, IllegalTransition) as exc:
         raise _http_for_transition(exc) from exc
     return AdvanceRead.model_validate(result)
+
+
+@router.patch("/{project_id}/transcript")
+def patch_transcript(
+    project_id: UUID,
+    payload: TranscriptPatchRequest,
+    db: DbDep,
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if (
+        project.current_stage is not ProjectStage.TRANSCRIPT_REVIEW
+        or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="transcript só pode ser editado em transcript_review",
+        )
+    try:
+        apply_transcript_edits(list(project.transcript_segments), payload.segments)
+    except TranscriptEditError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
 
 
 @router.get("/{project_id}")

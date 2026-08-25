@@ -1,5 +1,11 @@
-import { apiGet, apiPost } from "./api-client";
-import type { AdvanceResult, Project, ProjectCreate, ProjectDetail } from "./types";
+import { apiGet, apiPatch, apiPost } from "./api-client";
+import type {
+  AdvanceResult,
+  Project,
+  ProjectCreate,
+  ProjectDetail,
+  TranscriptSegmentPatch,
+} from "./types";
 
 export { ApiError } from "./api-client";
 export { getApiBaseUrl } from "./config";
@@ -36,4 +42,8 @@ export function advanceProject(id: string, fromStage?: string) {
 
 export function retryProjectStage(id: string) {
   return apiPost<AdvanceResult>(`/api/projects/${id}/retry-stage`);
+}
+
+export function patchTranscript(id: string, segments: TranscriptSegmentPatch[]) {
+  return apiPatch<ProjectDetail>(`/api/projects/${id}/transcript`, { segments });
 }

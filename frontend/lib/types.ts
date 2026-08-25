@@ -83,6 +83,12 @@ export type TranscriptSegment = {
   language: string;
 };
 
+export type TranscriptSegmentPatch = {
+  id: string;
+  text_original?: string;
+  text_translated?: string | null;
+};
+
 export type Thumbnail = {
   id: string;
   file_url: string;

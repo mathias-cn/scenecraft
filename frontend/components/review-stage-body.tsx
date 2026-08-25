@@ -1,4 +1,3 @@
-import { formatTimecode } from "@/lib/pipeline";
 import type { ProjectDetail, ProjectStage } from "@/lib/types";
 
 type ReviewBodyProps = {
@@ -7,28 +6,6 @@ type ReviewBodyProps = {
 
 function EmptyNote({ text }: { text: string }) {
   return <p className="text-sm text-white/40">{text}</p>;
-}
-
-function TranscriptReview({ project }: ReviewBodyProps) {
-  const segments = project.transcript_segments ?? [];
-  if (segments.length === 0) {
-    return <EmptyNote text="Nenhum segmento de transcript ainda." />;
-  }
-  return (
-    <ul className="max-h-80 space-y-3 overflow-y-auto pr-1">
-      {segments.map((segment) => (
-        <li key={segment.id} className="border-l border-white/10 pl-3">
-          <p className="font-mono text-[10px] text-white/35">
-            {formatTimecode(segment.start_ms)}–{formatTimecode(segment.end_ms)}
-          </p>
-          <p className="mt-1 text-sm text-white/80">{segment.text_original}</p>
-          {segment.text_translated ? (
-            <p className="mt-1 text-sm text-brass-400/90">{segment.text_translated}</p>
-          ) : null}
-        </li>
-      ))}
-    </ul>
-  );
 }
 
 function SceneReview({ project, withMedia }: ReviewBodyProps & { withMedia: boolean }) {
@@ -150,8 +127,6 @@ export function reviewTitle(stage: ProjectStage): string {
 
 export function ReviewStageBody({ project }: ReviewBodyProps) {
   switch (project.current_stage) {
-    case "transcript_review":
-      return <TranscriptReview project={project} />;
     case "scene_review":
       return <SceneReview project={project} withMedia={false} />;
     case "media_review":

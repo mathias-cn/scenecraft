@@ -39,6 +39,16 @@ class ProjectCreate(BaseModel):
         return self
 
 
+class TranscriptSegmentPatch(BaseModel):
+    id: uuid.UUID
+    text_original: str | None = None
+    text_translated: str | None = None
+
+
+class TranscriptPatchRequest(BaseModel):
+    segments: list[TranscriptSegmentPatch] = Field(default_factory=list)
+
+
 class AdvanceRequest(BaseModel):
     from_stage: ProjectStage | None = None
 
