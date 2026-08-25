@@ -7,12 +7,16 @@ import pytest
 from app.core.scene_clips import (
     ZOOM_MAX,
     ClipError,
+    clip_cache_hash,
+    clip_output_name,
+    ensure_scene_clips,
     ffmpeg_clipe_cmd,
     gere_clipe_cena,
     gere_clipes_cenas,
     gere_clipes_projeto,
     ken_burns_enabled,
     scene_duration_ms,
+    spec_from_scene,
 )
 from app.models.enums import AssemblyStatus, MediaType, SourceType
 from app.models.project import Project
@@ -149,7 +153,10 @@ def test_gere_clipes_cenas_uses_worker_pool(tmp_path, monkeypatch):
 
     paths = gere_clipes_cenas(scenes, tmp_path, gere_clipe=fake_clip)
     assert seen_workers == [3]
-    assert [path.name for path in paths] == ["scene_0000.mp4", "scene_0001.mp4"]
+    assert [path.name for path in paths] == [
+        clip_output_name(spec_from_scene(scenes[1])),
+        clip_output_name(spec_from_scene(scenes[0])),
+    ]
 
 
 def test_ken_burns_enabled_defaults_true():
@@ -175,9 +182,56 @@ def test_project_create_persists_ken_burns_flag():
     assert default.automation_config["ken_burns"] is True
 
 
+def test_clip_cache_hash_is_stable_and_changes_with_inputs():
+    scene = _scene(media_url="https://cdn.example.com/a.png", start_ms=0, end_ms=800)
+    same = _scene(media_url="https://cdn.example.com/a.png", start_ms=0, end_ms=800, index=9)
+    assert clip_cache_hash(scene) == clip_cache_hash(same)
+    assert clip_output_name(scene) == f"{clip_cache_hash(scene)}.mp4"
+    assert clip_cache_hash(_scene(media_url="https://cdn.example.com/b.png", start_ms=0, end_ms=800)) != clip_cache_hash(scene)
+    assert clip_cache_hash(_scene(media_url=scene.media_url, start_ms=0, end_ms=1200)) != clip_cache_hash(scene)
+
+
+def test_ensure_scene_clips_reuses_storage_hash(tmp_path):
+    kept = _scene(index=0, media_url="https://cdn.example.com/a.png", end_ms=800)
+    changed = _scene(index=1, media_url="https://cdn.example.com/b-new.png", end_ms=400)
+    kept_name = clip_output_name(spec_from_scene(kept))
+    generated = []
+
+    def fake_clip(spec, output_path=None, **_k):
+        generated.append(spec.index)
+        path = Path(output_path)
+        path.write_bytes(b"new")
+        return path
+
+    def fake_download(url, dest):
+        path = Path(dest)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"cached")
+        return path
+
+    paths, reused = ensure_scene_clips(
+        [kept, changed],
+        tmp_path,
+        project_id="proj",
+        gere_clipe=fake_clip,
+        download=fake_download,
+        exists=lambda _pid, name: name == kept_name,
+        object_url=lambda _pid, name: f"https://cdn.example.com/{name}",
+    )
+    assert reused == [0]
+    assert generated == [1]
+    assert [path.name for path in paths] == [
+        kept_name,
+        clip_output_name(spec_from_scene(changed)),
+    ]
+    assert paths[0].read_bytes() == b"cached"
+    assert paths[1].read_bytes() == b"new"
+
+
 def test_gere_clipes_projeto_uploads_and_stores_config(tmp_path):
     pid = uuid4()
     scene = _scene(index=0, end_ms=400)
+    filename = clip_output_name(spec_from_scene(scene))
     project = SimpleNamespace(
         id=pid,
         source_type=SourceType.YOUTUBE_LINK,
@@ -202,11 +256,13 @@ def test_gere_clipes_projeto_uploads_and_stores_config(tmp_path):
         db=FakeDB(project),
         gere_clipe=fake_clip,
         upload=fake_upload,
+        exists=lambda *_a, **_k: False,
     )
     assert result["count"] == 1
     assert result["ken_burns"] is True
-    assert result["clips"] == ["https://cdn.example.com/scene_0000.mp4"]
+    assert result["reused"] == []
+    assert result["clips"] == [f"https://cdn.example.com/{filename}"]
     assert project.video_assemblies[0].render_config["scene_clips"][0]["url"] == result["clips"][0]
-    assert project.video_assemblies[0].render_config["scene_clips"][0]["token"]
+    assert project.video_assemblies[0].render_config["scene_clips"][0]["hash"] == clip_cache_hash(spec_from_scene(scene))
     assert project.video_assemblies[0].status is AssemblyStatus.RENDERING
-    assert uploaded[0][2] == "scene_0000.mp4"
+    assert uploaded[0][2] == filename

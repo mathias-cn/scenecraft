@@ -42,16 +42,21 @@ class SceneClipSpec:
     media_type: str
 
 
-def clip_output_name(index: int) -> str:
-    return f"scene_{int(index):04d}.mp4"
-
-
-def clip_cache_token(spec: SceneClipSpec, ken_burns: bool) -> str:
-    apply = bool(ken_burns) and spec.media_type != MediaType.VIDEO.value
-    payload = (
-        f"{spec.id}|{spec.index}|{spec.media_url}|{spec.start_ms}|{spec.end_ms}|{int(apply)}"
-    )
+def clip_cache_hash(spec: Any) -> str:
+    """Hash estável de media_url + start_ms + end_ms (nome do clipe no storage)."""
+    item = spec if isinstance(spec, SceneClipSpec) else spec_from_scene(spec)
+    payload = f"{item.media_url}|{int(item.start_ms)}|{int(item.end_ms)}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def clip_output_name(spec: Any) -> str:
+    return f"{clip_cache_hash(spec)}.mp4"
+
+
+def clip_storage_url(project_id: str, filename: str) -> str:
+    from app.storage import object_key, public_url
+
+    return public_url(object_key(project_id, filename))
 
 
 def clip_cache_entry(spec: SceneClipSpec, ken_burns: bool, url: str = "") -> dict[str, Any]:
@@ -64,25 +69,8 @@ def clip_cache_entry(spec: SceneClipSpec, ken_burns: bool, url: str = "") -> dic
         "start_ms": spec.start_ms,
         "end_ms": spec.end_ms,
         "ken_burns": apply,
-        "token": clip_cache_token(spec, ken_burns),
+        "hash": clip_cache_hash(spec),
     }
-
-
-def clip_cache_hit(entry: Any, spec: SceneClipSpec, ken_burns: bool) -> bool:
-    if not isinstance(entry, dict):
-        return False
-    if not str(entry.get("url") or "").strip():
-        return False
-    return str(entry.get("token") or "") == clip_cache_token(spec, ken_burns)
-
-
-def index_clip_cache(raw: Any) -> dict[int, dict[str, Any]]:
-    out: dict[int, dict[str, Any]] = {}
-    for item in raw or []:
-        if not isinstance(item, dict) or item.get("index") is None:
-            continue
-        out[int(item["index"])] = item
-    return out
 
 
 def ken_burns_enabled(config: dict[str, Any] | None) -> bool:
@@ -170,7 +158,7 @@ def gere_clipe_cena(
     """Gera um .mp4 da imagem da cena com a duração de (end_ms - start_ms)."""
     spec = scene if isinstance(scene, SceneClipSpec) else spec_from_scene(scene)
     duration = scene_duration_ms(spec)
-    dest = Path(output_path) if output_path else Path(tempfile.mkdtemp(prefix="scenecraft-clip-")) / clip_output_name(spec.index)
+    dest = Path(output_path) if output_path else Path(tempfile.mkdtemp(prefix="scenecraft-clip-")) / clip_output_name(spec)
     dest.parent.mkdir(parents=True, exist_ok=True)
     source = Path(image_path) if image_path else _download_scene_image(spec, dest.parent, download=download)
     if not source.is_file():
@@ -212,7 +200,7 @@ def gere_clipes_cenas(
             pool.submit(
                 worker,
                 spec,
-                dest_dir / clip_output_name(spec.index),
+                dest_dir / clip_output_name(spec),
                 ken_burns=ken_burns,
                 download=download,
                 run=run,
@@ -230,6 +218,79 @@ def gere_clipes_cenas(
     return [ordered[spec.index] for spec in sorted(specs, key=lambda item: item.index)]
 
 
+def ensure_scene_clips(
+    scenes: Sequence[Any],
+    output_dir: str | Path,
+    *,
+    project_id: str,
+    ken_burns: bool = True,
+    max_workers: int | None = None,
+    gere_clipe=None,
+    download=None,
+    run=None,
+    exists=None,
+    object_url=None,
+) -> tuple[list[Path], list[int]]:
+    """Gera clipes só se o hash ainda não existir no storage; senão baixa o cache."""
+    specs = [scene if isinstance(scene, SceneClipSpec) else spec_from_scene(scene) for scene in scenes]
+    if not specs:
+        raise ClipError("projeto sem cenas para renderizar")
+    dest_dir = Path(output_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    exists_fn = exists
+    if exists_fn is None:
+        from app.storage import object_exists as exists_fn
+    url_fn = object_url or clip_storage_url
+
+    local_by_hash: dict[str, Path] = {}
+    reused_hashes: set[str] = set()
+    stale: list[SceneClipSpec] = []
+    queued: set[str] = set()
+    fetch = download
+    for spec in specs:
+        digest = clip_cache_hash(spec)
+        filename = clip_output_name(spec)
+        dest = dest_dir / filename
+        if digest in local_by_hash or digest in queued:
+            continue
+        if exists_fn(str(project_id), filename):
+            if fetch is None:
+                from app.storage import download_file as fetch
+            downloaded = Path(fetch(url_fn(str(project_id), filename), str(dest)))
+            if downloaded.is_file() and downloaded.stat().st_size > 0:
+                local_by_hash[digest] = downloaded
+                reused_hashes.add(digest)
+                continue
+        stale.append(spec)
+        queued.add(digest)
+
+    if stale:
+        generated = gere_clipes_cenas(
+            stale,
+            dest_dir,
+            ken_burns=ken_burns,
+            max_workers=max_workers,
+            gere_clipe=gere_clipe,
+            download=download,
+            run=run,
+        )
+        for spec, path in zip(sorted(stale, key=lambda item: item.index), generated, strict=True):
+            local_by_hash[clip_cache_hash(spec)] = path
+
+    missing = [
+        spec.index for spec in specs if clip_cache_hash(spec) not in local_by_hash
+    ]
+    if missing:
+        raise ClipError(f"cenas sem clipe: {', '.join(str(item) for item in missing)}")
+    ordered = [local_by_hash[clip_cache_hash(spec)] for spec in sorted(specs, key=lambda item: item.index)]
+    reused = [
+        spec.index
+        for spec in sorted(specs, key=lambda item: item.index)
+        if clip_cache_hash(spec) in reused_hashes
+    ]
+    return ordered, reused
+
+
 def gere_clipes_projeto(
     project_id: str | UUID,
     db: Session | None = None,
@@ -240,8 +301,10 @@ def gere_clipes_projeto(
     download=None,
     run=None,
     upload=None,
+    exists=None,
+    object_url=None,
 ) -> dict:
-    """Render: baixa as imagens, gera clipes no pool e grava URLs em render_config."""
+    """Render: gera clipes (reusa hash no storage) e grava URLs em render_config."""
     session, owns = _session(db)
     try:
         pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
@@ -257,18 +320,28 @@ def gere_clipes_projeto(
 
         if upload is None:
             from app.storage import upload_file as upload
+        url_fn = object_url or clip_storage_url
 
         with tempfile.TemporaryDirectory(prefix="scenecraft-clips-") as tmp:
-            clips = gere_clipes_cenas(
+            clips, reused = ensure_scene_clips(
                 specs,
                 tmp,
+                project_id=str(project.id),
                 ken_burns=apply_zoom,
                 max_workers=max_workers,
                 gere_clipe=gere_clipe,
                 download=download,
                 run=run,
+                exists=exists,
+                object_url=url_fn,
             )
-            urls = [upload(str(path), str(project.id), path.name) for path in clips]
+            reused_set = set(reused)
+            urls: list[str] = []
+            for spec, path in zip(specs, clips, strict=True):
+                if spec.index in reused_set:
+                    urls.append(url_fn(str(project.id), clip_output_name(spec)))
+                else:
+                    urls.append(upload(str(path), str(project.id), clip_output_name(spec)))
             entries = [
                 clip_cache_entry(spec, apply_zoom, url)
                 for spec, url in zip(specs, urls, strict=True)
@@ -289,6 +362,7 @@ def gere_clipes_projeto(
             "project_id": str(project.id),
             "clips": [item["url"] for item in entries],
             "count": len(entries),
+            "reused": reused,
             "ken_burns": apply_zoom,
         }
     except Exception:

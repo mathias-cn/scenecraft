@@ -14,10 +14,9 @@ from app.core.project_audio import ensure_video_assembly
 from app.core.scene_clips import (
     ClipError,
     clip_cache_entry,
-    clip_cache_hit,
     clip_output_name,
-    gere_clipes_cenas,
-    index_clip_cache,
+    clip_storage_url,
+    ensure_scene_clips,
     ken_burns_enabled,
     run_ffmpeg,
     spec_from_scene,
@@ -90,6 +89,8 @@ def render_video(
     download=None,
     run=None,
     upload=None,
+    exists=None,
+    object_url=None,
 ) -> dict:
     """Gera clipes (reusa cache), concatena, muxa com o áudio e avança RENDERING."""
     session, owns = _session(db)
@@ -119,21 +120,22 @@ def render_video(
             from app.storage import download_file as download
         if upload is None:
             from app.storage import upload_file as upload
+        url_fn = object_url or clip_storage_url
 
-        cache = index_clip_cache(config.get("scene_clips"))
         total_ms = sum(max(spec.end_ms - spec.start_ms, 1) for spec in specs)
         with tempfile.TemporaryDirectory(prefix="scenecraft-render-") as tmp:
             work = Path(tmp)
             clip_paths, entries, reused = _ensure_clips(
                 specs,
                 work,
-                cache=cache,
                 ken_burns=apply_zoom,
                 max_workers=max_workers,
                 gere_clipe=gere_clipe,
                 download=download,
                 run=run,
                 upload=upload,
+                exists=exists,
+                object_url=url_fn,
                 project_id=str(project.id),
             )
             silent = work / "concat.mp4"
@@ -195,58 +197,41 @@ def _ensure_clips(
     specs: list,
     work: Path,
     *,
-    cache: dict[int, dict[str, Any]],
     ken_burns: bool,
     max_workers: int | None,
     gere_clipe,
     download,
     run,
     upload,
+    exists,
+    object_url,
     project_id: str,
 ) -> tuple[list[Path], list[dict[str, Any]], list[int]]:
-    paths: dict[int, Path] = {}
-    reused: list[int] = []
-    stale: list = []
-    for spec in specs:
-        dest = work / clip_output_name(spec.index)
-        entry = cache.get(spec.index)
-        if clip_cache_hit(entry, spec, ken_burns):
-            downloaded = Path(download(str(entry["url"]), str(dest)))
-            if not downloaded.is_file() or downloaded.stat().st_size <= 0:
-                stale.append(spec)
-                continue
-            paths[spec.index] = downloaded
-            reused.append(spec.index)
-        else:
-            stale.append(spec)
-
-    if stale:
-        generated = gere_clipes_cenas(
-            stale,
-            work,
-            ken_burns=ken_burns,
-            max_workers=max_workers,
-            gere_clipe=gere_clipe,
-            download=download,
-            run=run,
-        )
-        by_index = {spec.index: path for spec, path in zip(sorted(stale, key=lambda item: item.index), generated, strict=True)}
-        paths.update(by_index)
-
-    missing = [spec.index for spec in specs if spec.index not in paths]
-    if missing:
-        raise ClipError(f"cenas sem clipe: {', '.join(str(item) for item in missing)}")
-
-    entries: list[dict[str, Any]] = []
+    url_fn = object_url or clip_storage_url
+    paths, reused = ensure_scene_clips(
+        specs,
+        work,
+        project_id=project_id,
+        ken_burns=ken_burns,
+        max_workers=max_workers,
+        gere_clipe=gere_clipe,
+        download=download,
+        run=run,
+        exists=exists,
+        object_url=url_fn,
+    )
+    by_index = {spec.index: path for spec, path in zip(sorted(specs, key=lambda item: item.index), paths, strict=True)}
     reused_set = set(reused)
+    entries: list[dict[str, Any]] = []
+    ordered: list[Path] = []
     for spec in specs:
-        path = paths[spec.index]
+        path = by_index[spec.index]
+        ordered.append(path)
         if spec.index in reused_set:
-            entries.append(dict(cache[spec.index]))
-            continue
-        url = upload(str(path), project_id, path.name)
+            url = url_fn(project_id, clip_output_name(spec))
+        else:
+            url = upload(str(path), project_id, clip_output_name(spec))
         entries.append(clip_cache_entry(spec, ken_burns, url))
-    ordered = [paths[spec.index] for spec in specs]
     return ordered, entries, reused
 
 

@@ -226,6 +226,20 @@ def upload_file(local_path: str, project_id: str, filename: str) -> str:
     return public_url(key)
 
 
+def object_exists(project_id: str, filename: str) -> bool:
+    """True se `{project_id}/{filename}` já existe no bucket."""
+    key = object_key(project_id, filename)
+    try:
+        _client().head_object(Bucket=settings.s3_bucket, Key=key)
+        return True
+    except ClientError as exc:
+        status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if status == 404 or code in {"404", "NoSuchKey", "NotFound"}:
+            return False
+        raise StorageError(f"head_object falhou: {exc}") from exc
+
+
 def download_file(url: str, local_path: str) -> Path:
     """Baixa o objeto referenciado por `url` para `local_path`."""
     if not url:

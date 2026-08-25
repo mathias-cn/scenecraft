@@ -11,7 +11,7 @@ from app.core.render_video import (
     render_video,
     write_concat_list,
 )
-from app.core.scene_clips import clip_cache_entry, spec_from_scene
+from app.core.scene_clips import clip_output_name, spec_from_scene
 from app.core.state_machine import linear_next, parse_stage
 from app.models.enums import AssemblyStatus, MediaType, ProjectStage, SourceType
 from app.models.project import Project
@@ -133,6 +133,8 @@ def test_write_concat_list_keeps_scene_order(tmp_path):
 
 def test_render_video_concat_mux_upload_and_advances(monkeypatch):
     scenes = [_scene(index=1, end_ms=400), _scene(index=0, end_ms=800)]
+    name0 = clip_output_name(spec_from_scene(scenes[1]))
+    name1 = clip_output_name(spec_from_scene(scenes[0]))
     project = _project(scenes)
     monkeypatch.setattr("app.core.render_video.advance_stage", _stub_advance(project))
     generated = []
@@ -163,12 +165,13 @@ def test_render_video_concat_mux_upload_and_advances(monkeypatch):
         download=_fake_download,
         run=fake_run,
         upload=fake_upload,
+        exists=lambda *_a, **_k: False,
     )
     assert set(generated) == {0, 1}
     mux = next(cmd for cmd in cmds if "-shortest" in cmd)
     assert concat_listing
     listing = concat_listing[0]
-    assert listing.index("scene_0000.mp4") < listing.index("scene_0001.mp4")
+    assert listing.index(name0) < listing.index(name1)
     assert mux[-1].endswith("render.mp4")
     assert result["output_url"] == "https://cdn.example.com/render.mp4"
     assert result["advanced"] is True
@@ -177,14 +180,15 @@ def test_render_video_concat_mux_upload_and_advances(monkeypatch):
     assert project.current_stage is ProjectStage.RENDER_REVIEW
     assert "render.mp4" in uploads
     assert result["reused"] == []
+    assert project.video_assembly.render_config["scene_clips"][0]["hash"]
 
 
 def test_render_video_reuses_unchanged_clip_cache(monkeypatch):
     scene = _scene(index=0, end_ms=800)
     spec = spec_from_scene(scene)
-    cached = clip_cache_entry(spec, True, "https://cdn.example.com/scene_0000.mp4")
-    assembly = _assembly(render_config={"audio_url": "https://cdn.example.com/n.mp3", "scene_clips": [cached]})
-    project = _project([scene], assembly=assembly)
+    filename = clip_output_name(spec)
+    cached_url = f"https://cdn.example.com/{filename}"
+    project = _project([scene])
     monkeypatch.setattr("app.core.render_video.advance_stage", _stub_advance(project))
     generated = []
     downloads = []
@@ -206,19 +210,20 @@ def test_render_video_reuses_unchanged_clip_cache(monkeypatch):
         download=fake_download,
         run=_fake_run,
         upload=lambda *_a, **_k: "https://cdn.example.com/render.mp4",
+        exists=lambda _pid, name: name == filename,
+        object_url=lambda _pid, name: f"https://cdn.example.com/{name}",
     )
     assert generated == []
     assert result["reused"] == [0]
-    assert cached["url"] in downloads
-    assert project.video_assembly.render_config["scene_clips"][0]["url"] == cached["url"]
+    assert cached_url in downloads
+    assert project.video_assembly.render_config["scene_clips"][0]["url"] == cached_url
 
 
 def test_render_video_regenerates_when_duration_changes(monkeypatch):
     scene = _scene(index=0, start_ms=0, end_ms=800)
     old = spec_from_scene(_scene(id=scene.id, index=0, start_ms=0, end_ms=400, media_url=scene.media_url))
-    cached = clip_cache_entry(old, True, "https://cdn.example.com/scene_0000.mp4")
-    assembly = _assembly(render_config={"audio_url": "https://cdn.example.com/n.mp3", "scene_clips": [cached]})
-    project = _project([scene], assembly=assembly)
+    old_name = clip_output_name(old)
+    project = _project([scene])
     monkeypatch.setattr("app.core.render_video.advance_stage", _stub_advance(project))
     generated = []
 
@@ -235,8 +240,46 @@ def test_render_video_regenerates_when_duration_changes(monkeypatch):
         download=_fake_download,
         run=_fake_run,
         upload=lambda local, pid, filename: f"https://cdn.example.com/{filename}",
+        exists=lambda _pid, name: name == old_name,
+        object_url=lambda _pid, name: f"https://cdn.example.com/{name}",
     )
     assert generated == [(0, 800)]
+
+
+def test_render_video_regenerates_only_changed_scene(monkeypatch):
+    kept = _scene(index=0, media_url="https://cdn.example.com/a.png", end_ms=800)
+    changed = _scene(index=1, media_url="https://cdn.example.com/b-new.png", end_ms=400)
+    kept_name = clip_output_name(spec_from_scene(kept))
+    project = _project([kept, changed])
+    monkeypatch.setattr("app.core.render_video.advance_stage", _stub_advance(project))
+    generated = []
+    uploads = []
+
+    def fake_clip(spec, output_path=None, **_k):
+        generated.append(spec.index)
+        path = Path(output_path)
+        path.write_bytes(b"clip")
+        return path
+
+    def fake_upload(local, project_id, filename):
+        uploads.append(filename)
+        return f"https://cdn.example.com/{filename}"
+
+    result = render_video(
+        project.id,
+        db=FakeDB(project),
+        gere_clipe=fake_clip,
+        download=_fake_download,
+        run=_fake_run,
+        upload=fake_upload,
+        exists=lambda _pid, name: name == kept_name,
+        object_url=lambda _pid, name: f"https://cdn.example.com/{name}",
+    )
+    assert generated == [1]
+    assert result["reused"] == [0]
+    assert clip_output_name(spec_from_scene(changed)) in uploads
+    assert kept_name not in uploads
+    assert "render.mp4" in uploads
 
 
 def test_render_video_requires_final_audio(monkeypatch):
@@ -250,6 +293,7 @@ def test_render_video_requires_final_audio(monkeypatch):
             download=_fake_download,
             run=_fake_run,
             upload=lambda *_a, **_k: "https://cdn.example.com/x.mp4",
+            exists=lambda *_a, **_k: False,
         )
     assert project.video_assembly.status is AssemblyStatus.FAILED
 
