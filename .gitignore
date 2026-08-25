@@ -5,7 +5,7 @@
 !.env.example
 
 #Rules
-.cursor/
+.cursor/rules/
 
 #Skills
 .agents/
