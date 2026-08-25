@@ -78,9 +78,9 @@ def test_provider_semaphore_times_out_when_full(monkeypatch):
 def test_provider_hold_releases_on_error(monkeypatch):
     sem = _semaphore(monkeypatch, limit=1)
     with pytest.raises(RuntimeError):
-        with sem.hold("anthropic", timeout=0.2):
+        with sem.hold("openai", timeout=0.2):
             raise RuntimeError("provider down")
-    assert sem.acquire("anthropic", timeout=0.2)
+    assert sem.acquire("openai", timeout=0.2)
 
 
 def test_provider_hold_skips_when_provider_is_none(monkeypatch):

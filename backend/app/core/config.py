@@ -29,7 +29,7 @@ class Settings(BaseSettings):
 
     higgsfield_api_key: str = ""
     elevenlabs_api_key: str = ""
-    anthropic_api_key: str = ""
+    openai_api_key: str = ""
 
     youtube_client_id: str = ""
     youtube_client_secret: str = ""
@@ -71,7 +71,7 @@ class Settings(BaseSettings):
 
     provider_concurrency_higgsfield: int = Field(default=2, ge=1, le=32)
     provider_concurrency_elevenlabs: int = Field(default=3, ge=1, le=32)
-    provider_concurrency_anthropic: int = Field(default=4, ge=1, le=32)
+    provider_concurrency_openai: int = Field(default=4, ge=1, le=32)
     provider_concurrency_youtube: int = Field(default=1, ge=1, le=32)
     provider_concurrency_r2: int = Field(default=4, ge=1, le=32)
 
