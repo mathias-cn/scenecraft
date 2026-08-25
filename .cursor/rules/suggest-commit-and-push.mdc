@@ -1,0 +1,39 @@
+---
+description: Após cada feature ou ação concluída, sugerir mensagem de commit e push.
+alwaysApply: true
+---
+
+# Sugerir commit e push
+
+Ao concluir qualquer feature, correção, refatoração ou ação que altere arquivos do repositório, **sempre** terminar a resposta sugerindo commit e push. Não executar `git commit` nem `git push` sem o usuário pedir.
+
+## O que fazer
+
+1. Verificar o que mudou (`git status` / `git diff`) antes de redigir a mensagem.
+2. Sugerir **uma** mensagem de commit curta (1–2 frases) focada no **porquê**, não na lista de arquivos.
+3. Oferecer o push para `origin` na branch atual (em geral `main`).
+4. Perguntar se deve executar o commit e o push.
+
+## Formato da sugestão
+
+Usar Conventional Commits em inglês, alinhado ao histórico do repo quando existir:
+
+- `feat:` nova funcionalidade
+- `fix:` correção
+- `refactor:` mudança sem alterar comportamento
+- `docs:` documentação
+- `chore:` tooling, rules, config
+
+Exemplo no fim da resposta:
+
+```
+Commit sugerido: feat: add scene export so users can reuse layouts
+Push: git push -u origin main
+Quer que eu faça o commit e o push?
+```
+
+## Não fazer
+
+- Não commitar `.env`, credenciais, secrets ou arquivos gerados irrelevantes.
+- Não criar commit vazio se não houver mudanças.
+- Não fazer force push em `main`/`master`.
