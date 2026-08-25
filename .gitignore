@@ -4,6 +4,9 @@
 .env.*.local
 !.env.example
 
+#Skills
+skills/
+
 # Python
 __pycache__/
 *.py[cod]
