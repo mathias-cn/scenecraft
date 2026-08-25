@@ -23,6 +23,7 @@ from app.providers.image_provider import (
 )
 
 AUDIO_GENERATION_MODES = ("elevenlabs", "user_upload")
+SCENE_PACING_VALUES = ("short", "medium", "long")
 _TRUE_VALUES = {True, 1, "1", "true", "True", "yes", "on"}
 
 
@@ -67,6 +68,10 @@ def normalize_automation_config(
         except ValueError as exc:
             raise ValueError(f"{key} deve ser um UUID") from exc
     merged["reuse_original_audio"] = merged.get("reuse_original_audio") in _TRUE_VALUES
+    pacing = str(merged.get("scene_pacing") or "medium").strip().lower()
+    if pacing not in SCENE_PACING_VALUES:
+        raise ValueError("scene_pacing deve ser 'short', 'medium' ou 'long'")
+    merged["scene_pacing"] = pacing
     mode = str(merged.get("audio_generation_mode") or "elevenlabs").strip().lower()
     if mode not in AUDIO_GENERATION_MODES:
         raise ValueError("audio_generation_mode deve ser 'elevenlabs' ou 'user_upload'")

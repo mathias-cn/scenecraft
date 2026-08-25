@@ -134,6 +134,35 @@ def test_project_create_accepts_optional_character_and_style_ids():
     assert payload.scene_style_id == sid
 
 
+def test_project_create_defaults_scene_pacing_to_medium():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+    )
+    assert payload.automation_config["scene_pacing"] == "medium"
+
+
+def test_project_create_accepts_scene_pacing():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        automation_config={"scene_pacing": "long"},
+    )
+    assert payload.automation_config["scene_pacing"] == "long"
+
+
+def test_project_create_rejects_invalid_scene_pacing():
+    with pytest.raises(ValidationError):
+        ProjectCreate(
+            title="clip",
+            source_type=SourceType.YOUTUBE_LINK,
+            source_ref="https://youtu.be/x",
+            automation_config={"scene_pacing": "instant"},
+        )
+
+
 def test_project_create_accepts_audio_automation_fields():
     payload = ProjectCreate(
         title="clip",

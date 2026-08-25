@@ -8,6 +8,7 @@ from app.providers.llm_client import (
     LLMJSONError,
     LLMProvider,
     OpenAILLMProvider,
+    PLAN_SCENES_SYSTEM,
     generate_description,
     plan_scenes,
     set_llm_provider,
@@ -91,7 +92,7 @@ def test_transcription_and_llm_share_openai_api_key():
     assert llm_module.openai_client is shared_openai_client
 
 
-def test_plan_scenes_returns_visual_prompts(monkeypatch):
+def test_plan_scenes_returns_grouping_without_timestamps(monkeypatch):
     captured: list[tuple[str, str]] = []
 
     def fake_completion(system_prompt: str, user_content: str) -> dict:
@@ -99,9 +100,8 @@ def test_plan_scenes_returns_visual_prompts(monkeypatch):
         return {
             "scenes": [
                 {
-                    "index": 0,
-                    "start_ms": 0,
-                    "end_ms": 2000,
+                    "start_ms": 999,
+                    "end_ms": 999,
                     "source_segment_ids": [0, 1],
                     "visual_prompt": "Wide shot of a rainy street at night, neon reflections",
                 }
@@ -117,13 +117,23 @@ def test_plan_scenes_returns_visual_prompts(monkeypatch):
         language="pt-BR",
         character_description="heroína de casaco vermelho",
         style_name="Anime",
+        scene_pacing="short",
+        min_duration_ms=8000,
+        max_duration_ms=15000,
     )
     assert scenes[0]["visual_prompt"].startswith("Wide shot")
     assert scenes[0]["source_segment_ids"] == [0, 1]
+    assert "start_ms" not in scenes[0]
+    assert "end_ms" not in scenes[0]
     assert "heroína de casaco vermelho" in scenes[0]["visual_prompt"]
     assert "Anime" in scenes[0]["visual_prompt"]
     assert "character" in captured[0][1]
     assert "olá" in captured[0][1]
+    assert "[0] 00:00.000–00:01.000" in captured[0][1]
+    assert "Never return start_ms" in captured[0][1]
+    assert '"min_duration_ms": 8000' in captured[0][1]
+    assert "NUNCA gere start_ms" in PLAN_SCENES_SYSTEM
+    assert captured[0][0] == PLAN_SCENES_SYSTEM
 
 
 def test_translate_segments_keeps_original_timestamps(monkeypatch):

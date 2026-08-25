@@ -8,3 +8,16 @@ def scene_planning(_self, db, job, project) -> dict:
     result["job_id"] = str(job.id)
     result["title"] = project.title
     return result
+
+
+def _register_project_id_task():
+    from app.celery_app import celery_app
+
+    @celery_app.task(name="scenecraft.plan_scenes")
+    def plan_scenes(project_id: str) -> dict:
+        return plan_project_scenes(project_id)
+
+    return plan_scenes
+
+
+plan_scenes = _register_project_id_task()

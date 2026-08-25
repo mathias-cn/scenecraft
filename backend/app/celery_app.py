@@ -30,6 +30,7 @@ celery_app.conf.update(
         "scenecraft.transcribe": {"queue": "transcribe"},
         "scenecraft.transcribe_project": {"queue": "transcribe"},
         "scenecraft.scene_planning": {"queue": "scene_planning"},
+        "scenecraft.plan_scenes": {"queue": "scene_planning"},
         "scenecraft.media_gen": {"queue": "media_gen"},
         "scenecraft.audio_gen": {"queue": "audio_gen"},
         "scenecraft.retranscribe_and_align": {"queue": "audio_gen"},

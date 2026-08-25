@@ -1,7 +1,7 @@
 """Completions estruturadas via OpenAI Chat Completions (JSON nativo).
 
 `structured_completion` é o método único reutilizado para:
-- agrupar transcript em scenes com visual_prompt
+- agrupar transcript em scenes (só source_segment_ids + visual_prompt)
 - traduzir cada segmento (preservando start_ms/end_ms)
 - gerar a descrição do vídeo a partir do transcript completo
 """
@@ -19,13 +19,15 @@ TRANSLATE_BATCH_SIZE = 20
 
 PLAN_SCENES_SYSTEM = """Você agrupa segmentos de transcript em cenas visuais para um vídeo.
 Responda só com um objeto JSON na forma:
-{"scenes":[{"index":0,"start_ms":0,"end_ms":0,"source_segment_ids":[0],"visual_prompt":"..."}]}
+{"scenes":[{"source_segment_ids":[0,1],"visual_prompt":"..."}]}
 Regras:
-- Cada cena cobre um ou mais segmentos contíguos.
-- start_ms é o start_ms do primeiro segmento da cena; end_ms é o end_ms do último.
-- source_segment_ids usa os index dos segmentos cobertos.
-- visual_prompt em inglês, concreto, para gerar imagem ou vídeo (sujeito, ambiente, câmera, iluminação).
-- index das cenas começa em 0 e é sequencial."""
+- Decida APENAS o agrupamento: quais índices de segmento (marcados como [n] no transcript) formam cada cena.
+- NUNCA gere start_ms, end_ms nem qualquer timestamp. O código calcula os tempos depois.
+- source_segment_ids usa os índices cobertos, em ordem crescente, contíguos, sem repetir e sem pular.
+- Cada segmento do transcript entra em exatamente uma cena; não deixe sobra nem duplicata.
+- Corte em pontos naturais de fim de frase ou ideia, não no meio de uma sentença.
+- Respeite min_duration_ms e max_duration_ms do JSON de entrada: a duração de cada cena é a soma das durações reais (ms) dos segmentos incluídos.
+- visual_prompt em inglês, concreto, para gerar imagem ou vídeo (sujeito, ambiente, câmera, iluminação)."""
 
 TRANSLATE_SYSTEM = """Você traduz cada segmento de transcript para o idioma pedido.
 Responda só com um objeto JSON na forma:
@@ -156,17 +158,53 @@ def _segment_payload(segment: Mapping[str, Any], index: int) -> dict[str, Any]:
     }
 
 
+def _format_timestamp_ms(ms: int) -> str:
+    total = max(0, int(ms))
+    millis = total % 1000
+    minutes, seconds = divmod(total // 1000, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{millis:03d}"
+    return f"{minutes:02d}:{seconds:02d}.{millis:03d}"
+
+
+def transcript_timeline(segments: Sequence[Mapping[str, Any]]) -> str:
+    """Transcript completo com índice e timestamps, para o LLM agrupar sem inventar tempos."""
+    lines: list[str] = []
+    for index, segment in enumerate(segments):
+        idx = int(segment["index"]) if "index" in segment else index
+        start = int(segment["start_ms"])
+        end = int(segment["end_ms"])
+        text = str(segment.get("text") or segment.get("text_original") or "")
+        duration = max(0, end - start)
+        lines.append(
+            f"[{idx}] {_format_timestamp_ms(start)}–{_format_timestamp_ms(end)} ({duration}ms) {text}"
+        )
+    return "\n".join(lines)
+
+
 def plan_scenes(
     segments: Sequence[Mapping[str, Any]],
     *,
     language: str = "pt-BR",
     character_description: str | None = None,
     style_name: str | None = None,
+    scene_pacing: str = "medium",
+    min_duration_ms: int = 15_000,
+    max_duration_ms: int = 25_000,
 ) -> list[dict[str, Any]]:
-    """Agrupa transcript_segments em cenas com visual_prompt."""
+    """Pede ao LLM só o agrupamento (source_segment_ids + visual_prompt). Sem timestamps."""
     payload: dict[str, Any] = {
         "language": language,
-        "segments": [_segment_payload(segment, index) for index, segment in enumerate(segments)],
+        "scene_pacing": scene_pacing,
+        "min_duration_ms": int(min_duration_ms),
+        "max_duration_ms": int(max_duration_ms),
+        "instruction": (
+            "Group contiguous segment indexes into scenes. "
+            "Return only source_segment_ids and visual_prompt. "
+            "Never return start_ms or end_ms."
+        ),
+        "transcript": transcript_timeline(segments),
     }
     if character_description:
         payload["character"] = {
@@ -191,13 +229,10 @@ def plan_scenes(
         if style_name and style_name.lower() not in prompt.lower():
             prompt = f"{prompt.rstrip('.')}. Visual style: {style_name.strip()}"
         ids = raw.get("source_segment_ids") or []
-        if not isinstance(ids, list):
-            ids = []
+        if not isinstance(ids, list) or not ids:
+            raise LLMJSONError(f"cena {index} sem source_segment_ids")
         normalized.append(
             {
-                "index": int(raw.get("index", index)),
-                "start_ms": int(raw.get("start_ms", 0)),
-                "end_ms": int(raw.get("end_ms", 0)),
                 "source_segment_ids": [int(item) for item in ids],
                 "visual_prompt": prompt,
             }
