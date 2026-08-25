@@ -4,6 +4,9 @@
 .env.*.local
 !.env.example
 
+#Rules
+.cursor/
+
 #Skills
 .agents/
 
