@@ -6,11 +6,13 @@ import { useRouter } from "next/navigation";
 import { createProject } from "@/lib/api";
 import {
   AUTOMATION_TOGGLES,
+  IMAGE_PROVIDERS,
   SOURCE_OPTIONS,
   TRANSCRIPT_LANGUAGES,
   defaultAutomation,
   toAutomationPayload,
   type AutomationConfig,
+  type ImageProviderName,
   type TranscriptLanguage,
 } from "@/lib/project-form";
 import type { SourceType } from "@/lib/types";
@@ -59,6 +61,7 @@ export function ProjectCreateForm() {
   const [sourceType, setSourceType] = useState<SourceType>("youtube_link");
   const [sourceRef, setSourceRef] = useState("");
   const [language, setLanguage] = useState<TranscriptLanguage>("original");
+  const [imageProvider, setImageProvider] = useState<ImageProviderName>("higgsfield");
   const [file, setFile] = useState<File | null>(null);
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation);
   const [error, setError] = useState<string | null>(null);
@@ -91,7 +94,8 @@ export function ProjectCreateForm() {
           source_type: sourceType,
           source_ref: needsFile ? undefined : sourceRef.trim(),
           target_language: language,
-          automation_config: toAutomationPayload(automation),
+          automation_config: toAutomationPayload(automation, imageProvider),
+          image_provider: imageProvider,
         },
         file,
       );
@@ -199,6 +203,39 @@ export function ProjectCreateForm() {
             );
           })}
         </fieldset>
+      </section>
+
+      <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
+        <p className="label-tech">Provider de imagem</p>
+        <fieldset className="mt-3 grid grid-cols-2 gap-2">
+          <legend className="sr-only">Provider de imagem</legend>
+          {IMAGE_PROVIDERS.map((option) => {
+            const active = imageProvider === option.value;
+            return (
+              <label
+                key={option.value}
+                className={`cursor-pointer rounded-md border px-3 py-2 text-center text-sm transition ${
+                  active
+                    ? "border-brass-500 bg-brass-500/10 text-brass-400"
+                    : "border-white/10 text-white/55 hover:border-white/20"
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="image_provider"
+                  value={option.value}
+                  checked={active}
+                  onChange={() => setImageProvider(option.value)}
+                  className="sr-only"
+                />
+                {option.label}
+              </label>
+            );
+          })}
+        </fieldset>
+        <p className="mt-2 font-mono text-[10px] text-white/30">
+          {IMAGE_PROVIDERS.find((option) => option.value === imageProvider)?.hint}
+        </p>
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">

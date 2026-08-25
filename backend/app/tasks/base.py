@@ -87,7 +87,7 @@ class TrackedTask(Task):
     ) -> dict[str, Any]:
         retries_left = int(self.max_retries) - int(self.request.retries)
         job.error = str(exc)
-        if retries_left > 0:
+        if retries_left > 0 and not getattr(exc, "permanent", False):
             job.status = JobStatus.RETRYING
             db.commit()
             countdown = retry_countdown(int(self.request.retries), settings.celery_retry_backoff_base)

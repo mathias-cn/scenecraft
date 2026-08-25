@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     higgsfield_api_key: str = ""
+    higgsfield_api_secret: str = ""
     elevenlabs_api_key: str = ""
     openai_api_key: str = ""
 

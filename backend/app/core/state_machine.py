@@ -174,8 +174,16 @@ def _source_payload(project: Project) -> dict[str, Any]:
     return {"source_type": source_type, "source_ref": project.source_ref}
 
 
+def _payloads_for_stage(project: Project, stage: ProjectStage) -> list[dict[str, Any]]:
+    if stage is ProjectStage.GENERATING_MEDIA:
+        scenes = list(getattr(project, "scenes", None) or [])
+        if scenes:
+            return [{"scene_id": str(scene.id), "index": scene.index} for scene in scenes]
+    return [_source_payload(project)]
+
+
 def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
-    _, jobs = dispatch_job_group(db, project, stage, [_source_payload(project)])
+    _, jobs = dispatch_job_group(db, project, stage, _payloads_for_stage(project, stage))
     return jobs[0]
 
 

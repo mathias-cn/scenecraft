@@ -1,6 +1,7 @@
 import { apiGet, apiPatch, apiPost } from "./api-client";
 import type {
   AdvanceResult,
+  ImageModelOption,
   Project,
   ProjectCreate,
   ProjectDetail,
@@ -26,6 +27,7 @@ export function createProject(payload: ProjectCreate, file?: File | null) {
     form.append("target_language", payload.target_language);
     form.append("automation_config", JSON.stringify(payload.automation_config ?? {}));
     if (payload.source_ref) form.append("source_ref", payload.source_ref);
+    if (payload.image_provider) form.append("image_provider", payload.image_provider);
     form.append("file", file);
     return apiPost<Project>("/api/projects", form);
   }
@@ -46,4 +48,15 @@ export function retryProjectStage(id: string) {
 
 export function patchTranscript(id: string, segments: TranscriptSegmentPatch[]) {
   return apiPatch<ProjectDetail>(`/api/projects/${id}/transcript`, { segments });
+}
+
+export function listImageModels(projectId: string) {
+  return apiGet<ImageModelOption[]>(`/api/projects/${projectId}/image-models`);
+}
+
+export function patchMediaSettings(
+  id: string,
+  payload: { image_model?: string; image_quality?: string },
+) {
+  return apiPatch<ProjectDetail>(`/api/projects/${id}/media-settings`, payload);
 }

@@ -15,6 +15,26 @@ export const TRANSCRIPT_LANGUAGES = [
 
 export type TranscriptLanguage = (typeof TRANSCRIPT_LANGUAGES)[number]["value"];
 
+export type ImageProviderName = "higgsfield" | "openai";
+
+export const IMAGE_PROVIDERS: { value: ImageProviderName; label: string; hint: string }[] = [
+  { value: "higgsfield", label: "Higgsfield", hint: "Catálogo de modelos da Higgsfield" },
+  { value: "openai", label: "OpenAI Image", hint: "gpt-image-2 e gpt-image-1-mini" },
+];
+
+export const OPENAI_IMAGE_MODELS = [
+  { id: "gpt-image-2", name: "GPT Image 2" },
+  { id: "gpt-image-1-mini", name: "GPT Image 1 Mini" },
+] as const;
+
+export const IMAGE_QUALITIES = [
+  { id: "low", name: "Low" },
+  { id: "medium", name: "Medium" },
+  { id: "high", name: "High" },
+] as const;
+
+export type ImageQuality = (typeof IMAGE_QUALITIES)[number]["id"];
+
 export const AUTOMATION_TOGGLES = [
   {
     key: "auto_transcribe",
@@ -69,10 +89,23 @@ export function defaultAutomation(): AutomationConfig {
   };
 }
 
-export function toAutomationPayload(flags: AutomationConfig): Record<string, boolean> {
+export function toAutomationPayload(
+  flags: AutomationConfig,
+  imageProvider: ImageProviderName = "higgsfield",
+): Record<string, unknown> {
   return {
     ...flags,
     auto_media: flags.auto_media_gen,
     auto_publish: flags.auto_description,
+    image_provider: imageProvider,
   };
+}
+
+export function imageProviderOf(config: Record<string, unknown> | undefined): ImageProviderName {
+  return config?.image_provider === "openai" ? "openai" : "higgsfield";
+}
+
+export function configString(config: Record<string, unknown> | undefined, key: string): string | null {
+  const value = config?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
 }

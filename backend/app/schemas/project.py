@@ -15,6 +15,39 @@ from app.models.enums import (
     SceneStatus,
     SourceType,
 )
+from app.providers.image_provider import (
+    DEFAULT_IMAGE_PROVIDER,
+    IMAGE_PROVIDERS,
+    IMAGE_QUALITIES,
+    OPENAI_IMAGE_MODELS,
+)
+
+
+def normalize_automation_config(
+    config: dict[str, Any] | None,
+    *,
+    image_provider: str | None = None,
+) -> dict[str, Any]:
+    """Garante image_provider válido e, se OpenAI, quality/model conhecidos."""
+    merged = dict(config or {})
+    raw = image_provider if image_provider not in (None, "") else merged.get("image_provider")
+    name = str(raw or DEFAULT_IMAGE_PROVIDER).strip().lower()
+    if name not in IMAGE_PROVIDERS:
+        raise ValueError("image_provider deve ser 'higgsfield' ou 'openai'")
+    merged["image_provider"] = name
+    quality = merged.get("image_quality")
+    if quality is not None and str(quality).strip().lower() not in IMAGE_QUALITIES:
+        raise ValueError("image_quality deve ser low, medium ou high")
+    if quality is not None:
+        merged["image_quality"] = str(quality).strip().lower()
+    model = merged.get("image_model")
+    if name == "openai" and model:
+        if str(model).strip() not in OPENAI_IMAGE_MODELS:
+            raise ValueError("image_model OpenAI deve ser gpt-image-2 ou gpt-image-1-mini")
+        merged["image_model"] = str(model).strip()
+    elif model:
+        merged["image_model"] = str(model).strip()
+    return merged
 
 
 class ProjectCreate(BaseModel):
@@ -23,6 +56,7 @@ class ProjectCreate(BaseModel):
     source_ref: str | None = Field(default=None, max_length=8000)
     target_language: str = Field(default="pt-BR", min_length=2, max_length=16)
     automation_config: dict[str, Any] = Field(default_factory=dict)
+    image_provider: str | None = None
 
     @field_validator("source_ref", mode="before")
     @classmethod
@@ -38,6 +72,15 @@ class ProjectCreate(BaseModel):
             raise ValueError("source_ref é obrigatório para youtube_link")
         return self
 
+    @model_validator(mode="after")
+    def normalize_image_provider(self):
+        self.automation_config = normalize_automation_config(
+            self.automation_config,
+            image_provider=self.image_provider,
+        )
+        self.image_provider = self.automation_config["image_provider"]
+        return self
+
 
 class TranscriptSegmentPatch(BaseModel):
     id: uuid.UUID
@@ -47,6 +90,26 @@ class TranscriptSegmentPatch(BaseModel):
 
 class TranscriptPatchRequest(BaseModel):
     segments: list[TranscriptSegmentPatch] = Field(default_factory=list)
+
+
+class MediaSettingsPatch(BaseModel):
+    image_model: str | None = None
+    image_quality: str | None = None
+
+    @field_validator("image_quality")
+    @classmethod
+    def quality_allowed(cls, value: str | None) -> str | None:
+        if value is None or value == "":
+            return None
+        quality = value.strip().lower()
+        if quality not in IMAGE_QUALITIES:
+            raise ValueError("image_quality deve ser low, medium ou high")
+        return quality
+
+
+class ImageModelRead(BaseModel):
+    id: str
+    name: str
 
 
 class AdvanceRequest(BaseModel):
