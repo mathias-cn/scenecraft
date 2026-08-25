@@ -84,7 +84,7 @@ def test_load_audio_youtube_uses_downloader(monkeypatch, tmp_path):
         called.append(url)
         return audio
 
-    monkeypatch.setattr("app.core.source_downloader.download_youtube_audio", fake_yt)
+    monkeypatch.setattr("app.core.source_downloader.download_from_youtube", fake_yt)
     project = _project(source_type=SourceType.YOUTUBE_LINK, source_ref="https://youtu.be/abc")
     assert load_audio(project, tmp_path) == audio
     assert called == ["https://youtu.be/abc"]
