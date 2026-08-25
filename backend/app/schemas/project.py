@@ -155,6 +155,19 @@ class AudioGenerateRequest(BaseModel):
     voice_id: str = Field(min_length=1, max_length=128)
 
 
+class DescriptionConfirmRequest(BaseModel):
+    text: str = Field(min_length=1)
+    tags: list[str] = Field(default_factory=list)
+
+    @field_validator("text")
+    @classmethod
+    def strip_description_text(cls, value: str) -> str:
+        text = value.strip()
+        if not text:
+            raise ValueError("descrição não pode ser vazia")
+        return text
+
+
 class AdvanceRequest(BaseModel):
     from_stage: ProjectStage | None = None
 

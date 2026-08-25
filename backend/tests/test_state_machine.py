@@ -221,7 +221,10 @@ def test_uploading_advances_to_published(monkeypatch):
 
 def test_ready_to_publish_pauses_without_auto_publish(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
-    project = _project(current_stage=ProjectStage.DESCRIPTION_STAGE)
+    project = _project(
+        current_stage=ProjectStage.DESCRIPTION_STAGE,
+        descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
+    )
     db = FakeDB(project)
     result = advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
     assert result.to_stage is ProjectStage.READY_TO_PUBLISH
@@ -238,6 +241,7 @@ def test_auto_publish_starts_upload(monkeypatch):
     project = _project(
         current_stage=ProjectStage.DESCRIPTION_STAGE,
         automation_config={"auto_publish": True},
+        descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
     )
     db = FakeDB(project)
     result = advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
@@ -331,3 +335,52 @@ def test_cannot_leave_thumbnail_stage_without_file(monkeypatch):
     with pytest.raises(IllegalTransition, match="thumbnail"):
         advance_stage(project.id, ProjectStage.THUMBNAIL_STAGE, db=db)
     assert project.current_stage is ProjectStage.THUMBNAIL_STAGE
+
+
+def test_thumbnail_stage_pauses_on_description_stage(monkeypatch):
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    project = _project(
+        current_stage=ProjectStage.THUMBNAIL_STAGE,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
+        thumbnails=[SimpleNamespace(id="thumb")],
+    )
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.THUMBNAIL_STAGE, db=db)
+    assert result.to_stage is ProjectStage.DESCRIPTION_STAGE
+    assert result.paused_for_review is True
+    assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
+    assert result.dispatched_job_id is None
+    assert db.added == []
+
+
+def test_auto_description_dispatches_description_job(monkeypatch):
+    enqueued = []
+    monkeypatch.setattr(
+        "app.core.state_machine.enqueue_job",
+        lambda step, job_id: enqueued.append(step.queue.value),
+    )
+    project = _project(
+        current_stage=ProjectStage.THUMBNAIL_STAGE,
+        automation_config={"auto_description": True},
+        thumbnails=[SimpleNamespace(id="thumb")],
+    )
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.THUMBNAIL_STAGE, db=db)
+    assert result.to_stage is ProjectStage.DESCRIPTION_STAGE
+    assert result.paused_for_review is False
+    assert result.auto_advanced is True
+    assert project.status is ProjectStatus.RUNNING
+    assert enqueued == ["description"]
+
+
+def test_cannot_leave_description_stage_without_copy(monkeypatch):
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    project = _project(
+        current_stage=ProjectStage.DESCRIPTION_STAGE,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
+        descriptions=[],
+    )
+    db = FakeDB(project)
+    with pytest.raises(IllegalTransition, match="descrição"):
+        advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
+    assert project.current_stage is ProjectStage.DESCRIPTION_STAGE

@@ -241,12 +241,13 @@ def test_generate_description_rejects_empty_transcript():
 
 
 def test_normalize_youtube_tags_caps_at_fifteen_and_rejects_missing_list():
-    from app.providers.llm_client import MAX_YOUTUBE_TAGS, normalize_youtube_tags
+    from app.providers.llm_client import MAX_YOUTUBE_TAGS, normalize_youtube_tags, sanitize_youtube_tags
 
     raw = [f"kw{i}" for i in range(20)]
     assert len(normalize_youtube_tags(raw)) == MAX_YOUTUBE_TAGS
     with pytest.raises(LLMJSONError, match="lista"):
         normalize_youtube_tags("mar, oceano")
+    assert sanitize_youtube_tags(["#uma"]) == ["uma"]
 
 
 def test_structured_completion_uses_override_model():

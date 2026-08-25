@@ -287,6 +287,11 @@ def advance_stage(
             if not thumbs:
                 raise IllegalTransition("projeto sem thumbnail")
 
+        if current is ProjectStage.DESCRIPTION_STAGE:
+            rows = list(getattr(project, "descriptions", None) or [])
+            if not rows:
+                raise IllegalTransition("projeto sem descrição")
+
         project.current_stage = nxt
         project.updated_at = _now()
 
@@ -332,6 +337,30 @@ def advance_stage(
 
         if nxt is ProjectStage.THUMBNAIL_STAGE:
             if config_bool(project.automation_config, "auto_thumbnail"):
+                project.status = ProjectStatus.RUNNING
+                job = _dispatch_work(session, project, nxt)
+                session.commit()
+                return AdvanceResult(
+                    project_id=project.id,
+                    from_stage=expected,
+                    to_stage=nxt,
+                    status=project.status,
+                    paused_for_review=False,
+                    dispatched_job_id=job.id,
+                    auto_advanced=True,
+                )
+            project.status = ProjectStatus.PAUSED_FOR_REVIEW
+            session.commit()
+            return AdvanceResult(
+                project_id=project.id,
+                from_stage=expected,
+                to_stage=nxt,
+                status=project.status,
+                paused_for_review=True,
+            )
+
+        if nxt is ProjectStage.DESCRIPTION_STAGE:
+            if config_bool(project.automation_config, "auto_description"):
                 project.status = ProjectStatus.RUNNING
                 job = _dispatch_work(session, project, nxt)
                 session.commit()

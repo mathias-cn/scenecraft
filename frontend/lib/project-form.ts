@@ -79,7 +79,7 @@ export const AUTOMATION_TOGGLES = [
   {
     key: "auto_description",
     label: "Descrição",
-    pause: "ready_to_publish",
+    pause: "description_stage",
   },
 ] as const;
 

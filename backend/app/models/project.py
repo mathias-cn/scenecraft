@@ -63,7 +63,9 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="project", cascade="all, delete-orphan"
     )
     descriptions: Mapped[list[Description]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
+        back_populates="project",
+        cascade="all, delete-orphan",
+        order_by="Description.created_at",
     )
     youtube_uploads: Mapped[list[YoutubeUpload]] = relationship(
         back_populates="project", cascade="all, delete-orphan"

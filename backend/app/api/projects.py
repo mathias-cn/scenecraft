@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
+from app.core.generate_description import DescriptionError, confirm_description, enqueue_description_generate
 from app.core.generate_scene_media import enqueue_scene_regenerate
 from app.core.generate_thumbnail import enqueue_thumbnail_generate, persist_uploaded_thumbnail
 from app.core.render_video import enqueue_render_regenerate
@@ -45,6 +46,7 @@ from app.schemas.project import (
     AdvanceRead,
     AdvanceRequest,
     AudioGenerateRequest,
+    DescriptionConfirmRequest,
     ProjectCreate,
     ProjectDetail,
     ProjectRead,
@@ -344,6 +346,44 @@ def upload_project_thumbnail(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except StorageError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/description/generate")
+def generate_project_description(project_id: UUID, db: DbDep) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        enqueue_description_generate(project.id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/description/confirm")
+def confirm_project_description(
+    project_id: UUID,
+    payload: DescriptionConfirmRequest,
+    db: DbDep,
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        confirm_description(project.id, payload.text, payload.tags, db=db)
+    except DescriptionError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except (ProjectNotFound, IllegalTransition) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()

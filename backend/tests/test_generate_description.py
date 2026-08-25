@@ -53,6 +53,7 @@ def _project(**kwargs):
         target_language="pt-BR",
         current_stage=ProjectStage.DESCRIPTION_STAGE,
         status=ProjectStatus.RUNNING,
+        automation_config={},
         transcript_segments=[_segment()],
         descriptions=[],
     )
@@ -160,6 +161,77 @@ def test_generate_description_persists_via_session_add(monkeypatch):
     assert isinstance(db.added[0], Description)
     assert db.added[0].source is DescriptionSource.GENERATED
     assert db.added[0].tags[0] == "tag 0"
+
+
+def test_enqueue_description_generate_queues_in_review():
+    from app.core.generate_description import enqueue_description_generate
+    from app.core.state_machine import IllegalTransition
+
+    project = _project(status=ProjectStatus.PAUSED_FOR_REVIEW)
+    queued: list[tuple] = []
+    result = enqueue_description_generate(
+        project.id,
+        db=FakeDB(project),
+        send_task=lambda name, args=None, queue=None, **_k: queued.append((name, args, queue)),
+    )
+    assert result["project_id"] == str(project.id)
+    assert queued == [("scenecraft.generate_description", [str(project.id)], "description")]
+
+    project.current_stage = ProjectStage.THUMBNAIL_STAGE
+    with pytest.raises(IllegalTransition, match="description_stage"):
+        enqueue_description_generate(
+            project.id,
+            db=FakeDB(project),
+            send_task=lambda *_a, **_k: None,
+        )
+
+
+def test_confirm_description_saves_manual_when_edited(monkeypatch):
+    from app.core.generate_description import confirm_description
+    from app.models.enums import DescriptionSource
+
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    tags = [f"tag {i}" for i in range(12)]
+    original = SimpleNamespace(text="texto gerado", tags=tags, source=DescriptionSource.GENERATED)
+    project = _project(status=ProjectStatus.PAUSED_FOR_REVIEW, descriptions=[original])
+    db = FakeDB(project)
+    result = confirm_description(
+        project.id,
+        text="texto editado pelo usuário",
+        tags=tags,
+        db=db,
+    )
+    assert result["edited"] is True
+    assert result["source"] == DescriptionSource.MANUAL.value
+    assert result["advanced"] is True
+    assert db.added[0].source is DescriptionSource.MANUAL
+    assert db.added[0].text == "texto editado pelo usuário"
+    assert project.current_stage is ProjectStage.READY_TO_PUBLISH
+
+
+def test_confirm_description_keeps_generated_when_unchanged(monkeypatch):
+    from app.core.generate_description import confirm_description
+    from app.models.enums import DescriptionSource
+
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+    tags = [f"tag {i}" for i in range(12)]
+    original = SimpleNamespace(text="texto gerado", tags=tags, source=DescriptionSource.GENERATED)
+    project = _project(status=ProjectStatus.PAUSED_FOR_REVIEW, descriptions=[original])
+    db = FakeDB(project)
+    result = confirm_description(project.id, text="texto gerado", tags=tags, db=db)
+    assert result["edited"] is False
+    assert result["source"] == DescriptionSource.GENERATED.value
+    assert db.added == []
+    assert result["advanced"] is True
+
+
+def test_confirm_description_requires_paused_stage():
+    from app.core.generate_description import confirm_description
+    from app.core.state_machine import IllegalTransition
+
+    project = _project(status=ProjectStatus.RUNNING, descriptions=[])
+    with pytest.raises(IllegalTransition, match="description_stage"):
+        confirm_description(project.id, text="ok", tags=["a"], db=FakeDB(project))
 
 
 def test_celery_task_is_registered_with_project_id():

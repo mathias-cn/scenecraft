@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { AudioStagePanel } from "@/components/audio-stage-panel";
+import { DescriptionStagePanel } from "@/components/description-stage-panel";
 import { MediaReview } from "@/components/media-review";
 import { RenderReview } from "@/components/render-review";
 import { ReviewStageBody, reviewTitle } from "@/components/review-stage-body";
@@ -25,6 +26,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   const isAudioStage = project.current_stage === "audio_stage";
   const isRenderReview = project.current_stage === "render_review";
   const isThumbnailStage = project.current_stage === "thumbnail_stage";
+  const isDescriptionStage = project.current_stage === "description_stage";
 
   async function onApprove() {
     setBusy(true);
@@ -56,7 +58,9 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
                   ? "Assista ao vídeo final. Regenerar render refaz a montagem (reusa clipes em cache); ao aprovar, o pipeline segue."
                   : isThumbnailStage
                     ? "Gere uma thumbnail com IA ou envie a sua. Qualquer uma das opções é salva antes de avançar."
-                    : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
+                    : isDescriptionStage
+                      ? "Edite o parágrafo e as tags. Regenerar pede de novo ao modelo; Confirmar salva o texto final e segue o pipeline."
+                      : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
       </p>
       {isTranscript ? (
         <TranscriptReview
@@ -72,6 +76,8 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
         <RenderReview project={project} onUpdated={onUpdated} />
       ) : isThumbnailStage ? (
         <ThumbnailStagePanel project={project} onUpdated={onUpdated} />
+      ) : isDescriptionStage ? (
+        <DescriptionStagePanel project={project} onUpdated={onUpdated} />
       ) : (
         <>
           <ReviewStageBody project={project} />

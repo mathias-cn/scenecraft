@@ -8,14 +8,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.enums import DescriptionSource
-from app.models.mixins import ProjectFKMixin, UUIDPrimaryKeyMixin
+from app.models.mixins import ProjectFKMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.pg import pg_enum
 
 if TYPE_CHECKING:
     from app.models.project import Project
 
 
-class Description(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
+class Description(UUIDPrimaryKeyMixin, ProjectFKMixin, TimestampMixin, Base):
     __tablename__ = "descriptions"
 
     text: Mapped[str] = mapped_column(Text, nullable=False)

@@ -95,6 +95,14 @@ export function uploadProjectThumbnail(id: string, file: File) {
   return apiPost<ProjectDetail>(`/api/projects/${id}/thumbnail/upload`, form);
 }
 
+export function generateProjectDescription(id: string) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/description/generate`);
+}
+
+export function confirmProjectDescription(id: string, payload: { text: string; tags: string[] }) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/description/confirm`, payload);
+}
+
 export function listStyles(active?: boolean) {
   const query = active === undefined ? "" : `?active=${active ? "true" : "false"}`;
   return apiGet<Style[]>(`/api/styles${query}`);

@@ -337,13 +337,12 @@ MIN_YOUTUBE_TAGS = 10
 MAX_YOUTUBE_TAGS = 15
 
 
-def normalize_youtube_tags(raw: Any) -> list[str]:
-    """Limpa tags no formato do campo YouTube: sem #, sem duplicata, 10–15 itens."""
-    if not isinstance(raw, list):
-        raise LLMJSONError("JSON de descrição deve conter a lista 'tags'")
+def sanitize_youtube_tags(raw: Any) -> list[str]:
+    """Limpa tags no formato do campo YouTube: sem #, sem duplicata, no máximo 15."""
     tags: list[str] = []
     seen: set[str] = set()
-    for item in raw:
+    items = raw if isinstance(raw, list) else []
+    for item in items:
         text = " ".join(str(item or "").replace(",", " ").split())
         if text.startswith("#"):
             text = text.lstrip("#").strip()
@@ -356,6 +355,14 @@ def normalize_youtube_tags(raw: Any) -> list[str]:
         tags.append(text)
         if len(tags) == MAX_YOUTUBE_TAGS:
             break
+    return tags
+
+
+def normalize_youtube_tags(raw: Any) -> list[str]:
+    """Limpa tags no formato do campo YouTube: sem #, sem duplicata, 10–15 itens."""
+    if not isinstance(raw, list):
+        raise LLMJSONError("JSON de descrição deve conter a lista 'tags'")
+    tags = sanitize_youtube_tags(raw)
     if len(tags) < MIN_YOUTUBE_TAGS:
         raise LLMJSONError("JSON de descrição deve conter 10 a 15 tags")
     return tags

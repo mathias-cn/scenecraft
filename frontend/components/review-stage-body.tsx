@@ -79,6 +79,7 @@ function ThumbnailReview({ project }: ReviewBodyProps) {
 function DescriptionReview({ project }: ReviewBodyProps) {
   const description = latest(project.descriptions);
   const thumb = latest(project.thumbnails);
+  const tags = description?.tags ?? [];
   return (
     <div className="space-y-4">
       {thumb ? (
@@ -86,7 +87,21 @@ function DescriptionReview({ project }: ReviewBodyProps) {
         <img src={thumb.file_url} alt="" className="max-h-40 rounded-lg object-contain" />
       ) : null}
       {description ? (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/75">{description.text}</p>
+        <>
+          <p className="whitespace-pre-wrap text-sm leading-relaxed text-white/75">{description.text}</p>
+          {tags.length > 0 ? (
+            <ul className="flex flex-wrap gap-2">
+              {tags.map((tag) => (
+                <li
+                  key={tag.toLocaleLowerCase()}
+                  className="rounded-full border border-white/15 px-3 py-1 text-sm text-white/70"
+                >
+                  {tag}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </>
       ) : (
         <EmptyNote text="Descrição ainda não gerada." />
       )}
@@ -111,7 +126,7 @@ export function reviewTitle(stage: ProjectStage): string {
     case "thumbnail_stage":
       return "Thumbnail do vídeo";
     case "description_stage":
-      return "Revisar descrição";
+      return "Descrição do vídeo";
     case "ready_to_publish":
       return "Revisar publicação";
     default:
