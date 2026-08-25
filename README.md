@@ -118,6 +118,7 @@ docker compose up postgres redis -d
 cd backend
 poetry install
 # Ajuste DATABASE_URL / REDIS_URL para localhost no .env
+poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 poetry run celery -A app.celery_app:celery_app worker --loglevel=info
 ```

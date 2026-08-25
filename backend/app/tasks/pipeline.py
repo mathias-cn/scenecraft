@@ -1,56 +1,78 @@
+import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
 from app.celery_app import celery_app
 from app.db import SessionLocal
-from app.models.job import Job, JobStatus
-from app.providers import anthropic, elevenlabs, higgsfield, storage, youtube
+from app.models.enums import JobStatus, ProjectStage, ProjectStatus
+from app.models.job import Job
+from app.models.project import Project
+
+PIPELINE_STAGES = [
+    ProjectStage.INGEST,
+    ProjectStage.TRANSCRIBE,
+    ProjectStage.TRANSLATE,
+    ProjectStage.SCENE,
+    ProjectStage.AUDIO,
+    ProjectStage.ASSEMBLE,
+    ProjectStage.THUMBNAIL,
+    ProjectStage.DESCRIBE,
+    ProjectStage.UPLOAD,
+    ProjectStage.COMPLETE,
+]
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _update(db: Session, job: Job, **fields) -> None:
-    for key, value in fields.items():
-        setattr(job, key, value)
-    job.updated_at = _now()
+def _save(db: Session) -> None:
     db.commit()
-    db.refresh(job)
 
 
 @celery_app.task(name="scenecraft.run_pipeline")
 def run_pipeline(job_id: str) -> dict:
     db = SessionLocal()
     try:
-        job = db.get(Job, job_id)
+        job = db.get(Job, uuid.UUID(job_id))
         if job is None:
             return {"ok": False, "error": "job_not_found"}
 
-        _update(db, job, status=JobStatus.SCRIPTING)
-        script = anthropic.generate_script(title=job.title, prompt=job.prompt)
-        _update(db, job, script=script, status=JobStatus.VOICING)
+        project = db.get(Project, job.project_id)
+        if project is None:
+            return {"ok": False, "error": "project_not_found"}
 
-        voice_url = elevenlabs.synthesize(script=script, job_id=job.id)
-        _update(db, job, voice_url=voice_url, status=JobStatus.VOICING)
+        job.status = JobStatus.RUNNING
+        job.started_at = _now()
+        job.attempt_count += 1
+        project.status = ProjectStatus.RUNNING
+        _save(db)
 
-        _update(db, job, status=JobStatus.GENERATING)
-        video_source = higgsfield.generate_video(script=script, job_id=job.id)
-        video_url = storage.upload_media(job_id=job.id, source=video_source)
-        _update(db, job, video_url=video_url, status=JobStatus.UPLOADING)
+        for stage in PIPELINE_STAGES:
+            job.stage = stage
+            project.current_stage = stage
+            project.updated_at = _now()
+            _save(db)
 
-        youtube_url = youtube.upload_video(
-            title=job.title,
-            description=script,
-            video_url=video_url,
-        )
-        _update(db, job, youtube_url=youtube_url, status=JobStatus.COMPLETED)
-        return {"ok": True, "job_id": job.id, "youtube_url": youtube_url}
+        job.status = JobStatus.COMPLETED
+        job.finished_at = _now()
+        job.result = {"stages": [stage.value for stage in PIPELINE_STAGES]}
+        project.status = ProjectStatus.COMPLETED
+        project.updated_at = _now()
+        _save(db)
+        return {"ok": True, "job_id": str(job.id), "project_id": str(project.id)}
     except Exception as exc:  # noqa: BLE001 — jobs must never leave the worker hanging
-        job = db.get(Job, job_id)
+        job = db.get(Job, uuid.UUID(job_id))
         if job is not None:
-            _update(db, job, status=JobStatus.FAILED, error=str(exc))
+            job.status = JobStatus.FAILED
+            job.error = str(exc)
+            job.finished_at = _now()
+            project = db.get(Project, job.project_id)
+            if project is not None:
+                project.status = ProjectStatus.FAILED
+                project.updated_at = _now()
+            _save(db)
         return {"ok": False, "error": str(exc)}
     finally:
         db.close()

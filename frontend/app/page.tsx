@@ -2,44 +2,59 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import { createJob, listJobs } from "@/lib/api";
-import type { Job, JobStatus } from "@/lib/types";
+import { createProject, listProjects } from "@/lib/api";
+import type { Project, ProjectStage, ProjectStatus, SourceType } from "@/lib/types";
 
-const STAGES: JobStatus[] = [
-  "pending",
-  "scripting",
-  "voicing",
-  "generating",
-  "uploading",
-  "completed",
+const STAGES: ProjectStage[] = [
+  "ingest",
+  "transcribe",
+  "translate",
+  "scene",
+  "audio",
+  "assemble",
+  "thumbnail",
+  "describe",
+  "upload",
+  "complete",
 ];
 
-const STAGE_LABEL: Record<JobStatus, string> = {
-  pending: "Fila",
-  scripting: "Roteiro",
-  voicing: "Narração",
-  generating: "Vídeo",
-  uploading: "YouTube",
-  completed: "Pronto",
-  failed: "Falhou",
+const STAGE_LABEL: Record<ProjectStage, string> = {
+  ingest: "Ingestão",
+  transcribe: "Transcrição",
+  translate: "Tradução",
+  scene: "Cenas",
+  audio: "Áudio",
+  assemble: "Montagem",
+  thumbnail: "Thumb",
+  describe: "Descrição",
+  upload: "YouTube",
+  complete: "Pronto",
 };
 
-function isActive(status: JobStatus) {
-  return status !== "completed" && status !== "failed";
+const SOURCE_LABEL: Record<SourceType, string> = {
+  youtube_link: "Link do YouTube",
+  upload_video: "Upload de vídeo",
+  upload_audio: "Upload de áudio",
+};
+
+function isActive(status: ProjectStatus) {
+  return status === "pending" || status === "running";
 }
 
 export default function HomePage() {
-  const [jobs, setJobs] = useState<Job[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [title, setTitle] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [sourceType, setSourceType] = useState<SourceType>("youtube_link");
+  const [sourceRef, setSourceRef] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("pt-BR");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [ready, setReady] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const data = await listJobs();
-      setJobs(data);
+      const data = await listProjects();
+      setProjects(data);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha ao falar com a API");
@@ -58,21 +73,29 @@ export default function HomePage() {
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
-    if (!title.trim() || !prompt.trim()) return;
+    if (!title.trim() || !sourceRef.trim()) return;
     setBusy(true);
     try {
-      await createJob({ title: title.trim(), prompt: prompt.trim() });
+      await createProject({
+        title: title.trim(),
+        source_type: sourceType,
+        source_ref: sourceRef.trim(),
+        target_language: targetLanguage.trim() || "pt-BR",
+      });
       setTitle("");
-      setPrompt("");
+      setSourceRef("");
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Não foi possível criar o job");
+      setError(err instanceof Error ? err.message : "Não foi possível criar o projeto");
     } finally {
       setBusy(false);
     }
   }
 
-  const inFlight = useMemo(() => jobs.filter((job) => isActive(job.status)).length, [jobs]);
+  const inFlight = useMemo(
+    () => projects.filter((project) => isActive(project.status)).length,
+    [projects],
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-5xl px-6 py-12">
@@ -83,11 +106,13 @@ export default function HomePage() {
             SceneCraft
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/55">
-            Da ideia ao upload: roteiro, voz, vídeo e publicação — enfileirado no Celery.
+            Da fonte ao upload: transcrição, cenas, áudio, montagem e publicação.
           </p>
         </div>
         <div className="text-right text-xs text-white/40">
-          <div>{jobs.length} job{jobs.length === 1 ? "" : "s"}</div>
+          <div>
+            {projects.length} projeto{projects.length === 1 ? "" : "s"}
+          </div>
           <div className="text-brass-500">{inFlight} em produção</div>
         </div>
       </header>
@@ -97,7 +122,7 @@ export default function HomePage() {
           onSubmit={onSubmit}
           className="rounded-2xl border border-white/10 bg-ink-800/80 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)]"
         >
-          <h2 className="font-display text-xl text-brass-400">Nova cena</h2>
+          <h2 className="font-display text-xl text-brass-400">Novo projeto</h2>
           <label className="mt-5 block text-xs tracking-widest text-white/45 uppercase">
             Título
             <input
@@ -109,13 +134,35 @@ export default function HomePage() {
             />
           </label>
           <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
-            Ideia / briefing
+            Fonte
+            <select
+              value={sourceType}
+              onChange={(event) => setSourceType(event.target.value as SourceType)}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm text-white outline-none focus:border-brass-500"
+            >
+              <option value="youtube_link">Link do YouTube</option>
+              <option value="upload_video">Upload de vídeo</option>
+              <option value="upload_audio">Upload de áudio</option>
+            </select>
+          </label>
+          <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
+            Referência
             <textarea
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              rows={6}
+              value={sourceRef}
+              onChange={(event) => setSourceRef(event.target.value)}
+              rows={4}
               className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm leading-relaxed text-white outline-none focus:border-brass-500"
-              placeholder="Explique o vídeo em algumas frases. O worker gera roteiro, narração e clip."
+              placeholder="URL do YouTube ou chave do arquivo no storage"
+              required
+            />
+          </label>
+          <label className="mt-4 block text-xs tracking-widest text-white/45 uppercase">
+            Idioma alvo
+            <input
+              value={targetLanguage}
+              onChange={(event) => setTargetLanguage(event.target.value)}
+              className="mt-2 w-full rounded-lg border border-white/10 bg-ink-950 px-3 py-2 text-sm text-white outline-none focus:border-brass-500"
+              placeholder="pt-BR"
               required
             />
           </label>
@@ -131,15 +178,15 @@ export default function HomePage() {
         <aside className="self-start rounded-2xl border border-dashed border-white/10 p-6 text-sm text-white/50">
           <p className="text-xs tracking-widest text-brass-500 uppercase">Pipeline</p>
           <ol className="mt-4 space-y-3">
-            <li>1. Anthropic escreve o roteiro</li>
-            <li>2. ElevenLabs gera a narração</li>
-            <li>3. Higgsfield produz o vídeo</li>
-            <li>4. S3 / R2 guarda o arquivo</li>
-            <li>5. YouTube recebe o upload</li>
+            <li>1. Ingestão da fonte</li>
+            <li>2. Transcrição e tradução</li>
+            <li>3. Cenas visuais + áudio</li>
+            <li>4. Montagem FFmpeg</li>
+            <li>5. Thumb, descrição e YouTube</li>
           </ol>
           <p className="mt-6 text-xs leading-relaxed text-white/35">
-            Sem chaves no <code className="text-white/55">.env</code>, o worker corre em modo stub para
-            você validar o stack com <code className="text-white/55">docker compose up</code>.
+            O schema vive em Postgres (Alembic). Sem chaves no <code className="text-white/55">.env</code>, o
+            worker avança os estágios em modo stub.
           </p>
         </aside>
       </section>
@@ -154,39 +201,36 @@ export default function HomePage() {
         <h2 className="mb-4 font-display text-xl text-brass-400">Fila</h2>
         {!ready ? (
           <p className="text-sm text-white/40">Carregando…</p>
-        ) : jobs.length === 0 ? (
-          <p className="text-sm text-white/40">Nenhum job ainda. Envie uma ideia para começar.</p>
+        ) : projects.length === 0 ? (
+          <p className="text-sm text-white/40">Nenhum projeto ainda. Envie uma fonte para começar.</p>
         ) : (
           <ul className="space-y-4">
-            {jobs.map((job) => (
-              <li
-                key={job.id}
-                className="rounded-2xl border border-white/10 bg-ink-800/60 p-5"
-              >
+            {projects.map((project) => (
+              <li key={project.id} className="rounded-2xl border border-white/10 bg-ink-800/60 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <h3 className="font-display text-lg text-white">{job.title}</h3>
-                    <p className="mt-1 max-w-2xl text-sm text-white/45">{job.prompt}</p>
+                    <h3 className="font-display text-lg text-white">{project.title}</h3>
+                    <p className="mt-1 max-w-2xl text-sm text-white/45">
+                      {SOURCE_LABEL[project.source_type]} · {project.source_ref}
+                    </p>
                   </div>
                   <span
                     className={`rounded-full px-3 py-1 text-xs tracking-wide uppercase ${
-                      job.status === "failed"
+                      project.status === "failed"
                         ? "bg-red-500/20 text-red-300"
-                        : job.status === "completed"
+                        : project.status === "completed"
                           ? "bg-brass-500/20 text-brass-400"
                           : "bg-white/10 text-white/70"
                     }`}
                   >
-                    {STAGE_LABEL[job.status]}
+                    {STAGE_LABEL[project.current_stage]}
                   </span>
                 </div>
                 <div className="mt-4 flex flex-wrap gap-1.5">
                   {STAGES.map((stage) => {
-                    const currentIndex = STAGES.indexOf(
-                      job.status === "failed" ? "pending" : job.status,
-                    );
+                    const currentIndex = STAGES.indexOf(project.current_stage);
                     const stageIndex = STAGES.indexOf(stage);
-                    const done = job.status === "completed" || stageIndex <= currentIndex;
+                    const done = project.status === "completed" || stageIndex <= currentIndex;
                     return (
                       <span
                         key={stage}
@@ -199,17 +243,6 @@ export default function HomePage() {
                     );
                   })}
                 </div>
-                {job.youtube_url && (
-                  <a
-                    href={job.youtube_url}
-                    className="mt-3 inline-block text-sm text-brass-400 underline-offset-4 hover:underline"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {job.youtube_url}
-                  </a>
-                )}
-                {job.error && <p className="mt-3 text-sm text-red-300">{job.error}</p>}
               </li>
             ))}
           </ul>

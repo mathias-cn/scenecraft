@@ -5,13 +5,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.config import settings
-from app.db import Base, engine
-from app.models import Job  # noqa: F401
+import app.models  # noqa: F401 — register SQLAlchemy metadata
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    Base.metadata.create_all(bind=engine)
     yield
 
 

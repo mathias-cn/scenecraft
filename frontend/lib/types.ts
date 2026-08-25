@@ -1,27 +1,35 @@
-export type JobStatus =
-  | "pending"
-  | "scripting"
-  | "voicing"
-  | "generating"
-  | "uploading"
-  | "completed"
-  | "failed";
+export type SourceType = "youtube_link" | "upload_video" | "upload_audio";
 
-export type Job = {
+export type ProjectStage =
+  | "ingest"
+  | "transcribe"
+  | "translate"
+  | "scene"
+  | "audio"
+  | "assemble"
+  | "thumbnail"
+  | "describe"
+  | "upload"
+  | "complete";
+
+export type ProjectStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
+
+export type Project = {
   id: string;
   title: string;
-  prompt: string;
-  status: JobStatus;
-  script: string | null;
-  voice_url: string | null;
-  video_url: string | null;
-  youtube_url: string | null;
-  error: string | null;
+  source_type: SourceType;
+  source_ref: string;
+  target_language: string;
+  automation_config: Record<string, unknown>;
+  current_stage: ProjectStage;
+  status: ProjectStatus;
   created_at: string;
   updated_at: string;
 };
 
-export type JobCreate = {
+export type ProjectCreate = {
   title: string;
-  prompt: string;
+  source_type: SourceType;
+  source_ref: string;
+  target_language: string;
 };

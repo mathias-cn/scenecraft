@@ -1,26 +1,24 @@
+import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.models.job import JobStatus
-
-
-class JobCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    prompt: str = Field(min_length=1, max_length=8000)
+from app.models.enums import JobStatus, ProjectStage
 
 
 class JobRead(BaseModel):
-    id: str
-    title: str
-    prompt: str
+    id: uuid.UUID
+    project_id: uuid.UUID
+    stage: ProjectStage
+    job_type: str
     status: JobStatus
-    script: str | None = None
-    voice_url: str | None = None
-    video_url: str | None = None
-    youtube_url: str | None = None
+    attempt_count: int
+    payload: dict[str, Any]
+    result: dict[str, Any] | None = None
     error: str | None = None
     created_at: datetime
-    updated_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
 
     model_config = {"from_attributes": True}

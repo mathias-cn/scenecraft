@@ -1,4 +1,4 @@
-import type { Job, JobCreate } from "./types";
+import type { Project, ProjectCreate } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -20,12 +20,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export function listJobs() {
-  return request<Job[]>("/api/jobs");
+export function listProjects() {
+  return request<Project[]>("/api/projects");
 }
 
-export function createJob(payload: JobCreate) {
-  return request<Job>("/api/jobs", {
+export function createProject(payload: ProjectCreate) {
+  return request<Project>("/api/projects", {
     method: "POST",
     body: JSON.stringify(payload),
   });
