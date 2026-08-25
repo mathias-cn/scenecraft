@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     s3_endpoint_url: str = ""
     r2_account_id: str = ""
     r2_public_base_url: str = ""
+    cloudflare_api_token: str = ""
 
     cors_origins: str = "http://localhost:3000"
 
