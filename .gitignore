@@ -5,7 +5,7 @@
 !.env.example
 
 #Skills
-skills/
+.agents/
 
 # Python
 __pycache__/
