@@ -4,12 +4,15 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { CharacterSelect } from "@/components/character-select";
+import { ImageModelPicker } from "@/components/image-model-picker";
 import { StyleSelect } from "@/components/style-select";
 import { TitleSuggestDialog } from "@/components/title-suggest-dialog";
 import { createProject } from "@/lib/api";
 import {
   AUDIO_GENERATION_MODES,
   AUTOMATION_TOGGLES,
+  DEFAULT_IMAGE_QUALITY,
+  DEFAULT_OPENAI_MODEL,
   IMAGE_PROVIDERS,
   SOURCE_OPTIONS,
   TRANSCRIPT_LANGUAGES,
@@ -18,6 +21,7 @@ import {
   type AudioGenerationMode,
   type AutomationConfig,
   type ImageProviderName,
+  type ImageQuality,
   type TranscriptLanguage,
 } from "@/lib/project-form";
 import type { SourceType } from "@/lib/types";
@@ -67,6 +71,8 @@ export function ProjectCreateForm() {
   const [sourceRef, setSourceRef] = useState("");
   const [language, setLanguage] = useState<TranscriptLanguage>("original");
   const [imageProvider, setImageProvider] = useState<ImageProviderName>("higgsfield");
+  const [imageModel, setImageModel] = useState("");
+  const [imageQuality, setImageQuality] = useState<ImageQuality>(DEFAULT_IMAGE_QUALITY);
   const [sceneStyleId, setSceneStyleId] = useState("");
   const [characterId, setCharacterId] = useState("");
   const [lockedStyleId, setLockedStyleId] = useState<string | null>(null);
@@ -96,6 +102,10 @@ export function ProjectCreateForm() {
       setError("Informe o link do YouTube.");
       return;
     }
+    if (!imageModel.trim()) {
+      setError("Escolha o modelo de imagem.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -108,6 +118,8 @@ export function ProjectCreateForm() {
           automation_config: toAutomationPayload(automation, imageProvider, sceneStyleId, characterId, {
             reuseOriginalAudio: sourceType === "upload_audio" && reuseOriginalAudio,
             audioGenerationMode,
+            imageModel,
+            imageQuality,
           }),
           image_provider: imageProvider,
           character_id: characterId || undefined,
@@ -314,7 +326,12 @@ export function ProjectCreateForm() {
                   name="image_provider"
                   value={option.value}
                   checked={active}
-                  onChange={() => setImageProvider(option.value)}
+                  onChange={() => {
+                    setImageProvider(option.value);
+                    if (option.value === "openai") {
+                      setImageModel(DEFAULT_OPENAI_MODEL);
+                    }
+                  }}
                   className="sr-only"
                 />
                 {option.label}
@@ -325,6 +342,13 @@ export function ProjectCreateForm() {
         <p className="mt-2 font-mono text-[10px] text-white/30">
           {IMAGE_PROVIDERS.find((option) => option.value === imageProvider)?.hint}
         </p>
+        <ImageModelPicker
+          provider={imageProvider}
+          model={imageModel}
+          quality={imageQuality}
+          onModelChange={setImageModel}
+          onQualityChange={setImageQuality}
+        />
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
@@ -354,7 +378,7 @@ export function ProjectCreateForm() {
 
       <button
         type="submit"
-        disabled={busy}
+        disabled={busy || !imageModel}
         className="w-full rounded-md bg-brass-500 px-4 py-2.5 text-sm font-medium text-ink-950 transition hover:bg-brass-400 disabled:opacity-50"
       >
         {busy ? "Criando…" : "Criar projeto"}

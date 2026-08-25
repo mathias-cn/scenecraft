@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.core.style_links import STYLE_IN_USE_MESSAGE, scene_style_matches, style_is_in_use
 from app.models.enums import SourceType
-from app.schemas.project import MediaSettingsPatch, ProjectCreate
+from app.schemas.project import ProjectCreate
 from app.schemas.style import StyleCreate, StylePatch
 
 
@@ -93,7 +93,3 @@ def test_project_create_keeps_scene_style():
         automation_config={"scene_style": "  anime  "},
     )
     assert payload.automation_config["scene_style"] == "anime"
-
-
-def test_media_settings_patch_accepts_scene_style():
-    assert MediaSettingsPatch(scene_style="fotorrealista").scene_style == "fotorrealista"

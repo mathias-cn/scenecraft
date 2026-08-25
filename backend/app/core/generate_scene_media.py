@@ -30,7 +30,7 @@ def generate_scene_media(
     *,
     upload=None,
 ) -> dict:
-    """Lê `automation_config.image_provider`, gera a imagem e grava a cena."""
+    """Lê modelo e quality de `automation_config` (definidos na criação do projeto)."""
     session, owns = _session(db)
     try:
         scene = None

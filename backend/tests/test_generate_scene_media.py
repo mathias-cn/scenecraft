@@ -110,6 +110,27 @@ def test_generate_scene_media_uses_named_provider(monkeypatch):
     assert scene.generation_provider == "openai"
 
 
+def test_generate_scene_media_reads_model_and_quality_from_config(monkeypatch):
+    project, scene = _scene_project("openai")
+    project.automation_config["image_model"] = "gpt-image-1-mini"
+    project.automation_config["image_quality"] = "high"
+    db = FakeDB(project, scene)
+    fake = FakeProvider("openai")
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", lambda name: fake)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    generate_scene_media(
+        project.id,
+        scene.id,
+        db=db,
+        upload=lambda *_a, **_k: "https://cdn.example.com/s.png",
+    )
+    assert fake.calls[0][1]["model"] == "gpt-image-1-mini"
+    assert fake.calls[0][1]["quality"] == "high"
+
+
 def test_generate_scene_media_uses_higgsfield_semaphore(monkeypatch):
     project, scene = _scene_project("higgsfield")
     db = FakeDB(project, scene)
@@ -138,6 +159,8 @@ def test_project_create_defaults_image_provider():
     )
     assert payload.image_provider == "higgsfield"
     assert payload.automation_config["image_provider"] == "higgsfield"
+    assert payload.automation_config["image_model"] == "higgsfield-ai/soul/v2/standard"
+    assert "image_quality" not in payload.automation_config
 
 
 def test_project_create_accepts_openai_image_provider():
@@ -149,6 +172,8 @@ def test_project_create_accepts_openai_image_provider():
         automation_config={"auto_media": True},
     )
     assert payload.automation_config["image_provider"] == "openai"
+    assert payload.automation_config["image_model"] == "gpt-image-2"
+    assert payload.automation_config["image_quality"] == "medium"
     assert payload.automation_config["auto_media"] is True
 
 
@@ -160,6 +185,30 @@ def test_project_create_rejects_unknown_provider():
             source_ref="https://youtu.be/x",
             image_provider="midjourney",
         )
+
+
+def test_project_create_persists_openai_model_and_quality():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        image_provider="openai",
+        automation_config={"image_model": "gpt-image-1-mini", "image_quality": "high"},
+    )
+    assert payload.automation_config["image_model"] == "gpt-image-1-mini"
+    assert payload.automation_config["image_quality"] == "high"
+
+
+def test_project_create_persists_higgsfield_model():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        image_provider="higgsfield",
+        automation_config={"image_model": "higgsfield-ai/soul/v2/high", "image_quality": "high"},
+    )
+    assert payload.automation_config["image_model"] == "higgsfield-ai/soul/v2/high"
+    assert "image_quality" not in payload.automation_config
 
 
 def test_generate_scene_media_openai_edits_with_character(monkeypatch):

@@ -35,6 +35,9 @@ export const IMAGE_QUALITIES = [
 
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number]["id"];
 
+export const DEFAULT_OPENAI_MODEL = "gpt-image-2";
+export const DEFAULT_IMAGE_QUALITY: ImageQuality = "medium";
+
 export type AudioGenerationMode = "elevenlabs" | "user_upload";
 
 export const AUDIO_GENERATION_MODES: { value: AudioGenerationMode; label: string }[] = [
@@ -101,16 +104,24 @@ export function toAutomationPayload(
   imageProvider: ImageProviderName = "higgsfield",
   sceneStyleId?: string,
   characterId?: string,
-  audio?: { reuseOriginalAudio?: boolean; audioGenerationMode?: AudioGenerationMode },
+  extras?: {
+    reuseOriginalAudio?: boolean;
+    audioGenerationMode?: AudioGenerationMode;
+    imageModel?: string;
+    imageQuality?: ImageQuality;
+  },
 ): Record<string, unknown> {
-  const reuse = Boolean(audio?.reuseOriginalAudio);
+  const reuse = Boolean(extras?.reuseOriginalAudio);
+  const imageModel = extras?.imageModel?.trim();
   return {
     ...flags,
     auto_media: flags.auto_media_gen,
     auto_publish: flags.auto_description,
     image_provider: imageProvider,
     reuse_original_audio: reuse,
-    audio_generation_mode: reuse ? "elevenlabs" : (audio?.audioGenerationMode ?? "elevenlabs"),
+    audio_generation_mode: reuse ? "elevenlabs" : (extras?.audioGenerationMode ?? "elevenlabs"),
+    ...(imageModel ? { image_model: imageModel } : {}),
+    ...(imageProvider === "openai" ? { image_quality: extras?.imageQuality ?? DEFAULT_IMAGE_QUALITY } : {}),
     ...(characterId ? { character_id: characterId } : {}),
     ...(sceneStyleId ? { scene_style_id: sceneStyleId } : {}),
   };

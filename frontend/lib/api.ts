@@ -59,8 +59,8 @@ export function patchTranscript(id: string, segments: TranscriptSegmentPatch[]) 
   return apiPatch<ProjectDetail>(`/api/projects/${id}/transcript`, { segments });
 }
 
-export function listImageModels(projectId: string) {
-  return apiGet<ImageModelOption[]>(`/api/projects/${projectId}/image-models`);
+export function listImageModels(provider: "higgsfield" | "openai" = "higgsfield") {
+  return apiGet<ImageModelOption[]>(`/api/image-models?provider=${encodeURIComponent(provider)}`);
 }
 
 export function generateProjectAudio(id: string, voiceId: string) {
@@ -75,13 +75,6 @@ export function uploadProjectAudio(id: string, file: File) {
 
 export function listAudioVoices(projectId: string) {
   return apiGet<{ id: string; name: string }[]>(`/api/projects/${projectId}/audio/voices`);
-}
-
-export function patchMediaSettings(
-  id: string,
-  payload: { image_model?: string; image_quality?: string; scene_style?: string; scene_style_id?: string },
-) {
-  return apiPatch<ProjectDetail>(`/api/projects/${id}/media-settings`, payload);
 }
 
 export function listStyles(active?: boolean) {

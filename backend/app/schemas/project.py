@@ -16,7 +16,10 @@ from app.models.enums import (
     SourceType,
 )
 from app.providers.image_provider import (
+    DEFAULT_HIGGSFIELD_MODEL,
     DEFAULT_IMAGE_PROVIDER,
+    DEFAULT_IMAGE_QUALITY,
+    DEFAULT_OPENAI_MODEL,
     IMAGE_PROVIDERS,
     IMAGE_QUALITIES,
     OPENAI_IMAGE_MODELS,
@@ -39,18 +42,19 @@ def normalize_automation_config(
     if name not in IMAGE_PROVIDERS:
         raise ValueError("image_provider deve ser 'higgsfield' ou 'openai'")
     merged["image_provider"] = name
-    quality = merged.get("image_quality")
-    if quality is not None and str(quality).strip().lower() not in IMAGE_QUALITIES:
-        raise ValueError("image_quality deve ser low, medium ou high")
-    if quality is not None:
-        merged["image_quality"] = str(quality).strip().lower()
     model = merged.get("image_model")
-    if name == "openai" and model:
-        if str(model).strip() not in OPENAI_IMAGE_MODELS:
+    if name == "openai":
+        chosen = str(model).strip() if model else DEFAULT_OPENAI_MODEL
+        if chosen not in OPENAI_IMAGE_MODELS:
             raise ValueError("image_model OpenAI deve ser gpt-image-2 ou gpt-image-1-mini")
-        merged["image_model"] = str(model).strip()
-    elif model:
-        merged["image_model"] = str(model).strip()
+        merged["image_model"] = chosen
+        quality = str(merged.get("image_quality") or DEFAULT_IMAGE_QUALITY).strip().lower()
+        if quality not in IMAGE_QUALITIES:
+            raise ValueError("image_quality deve ser low, medium ou high")
+        merged["image_quality"] = quality
+    else:
+        merged["image_model"] = str(model).strip() if model and str(model).strip() else DEFAULT_HIGGSFIELD_MODEL
+        merged.pop("image_quality", None)
     scene_style = merged.get("scene_style")
     if scene_style is not None:
         text = str(scene_style).strip()
@@ -131,30 +135,6 @@ class TranscriptSegmentPatch(BaseModel):
 
 class TranscriptPatchRequest(BaseModel):
     segments: list[TranscriptSegmentPatch] = Field(default_factory=list)
-
-
-class MediaSettingsPatch(BaseModel):
-    image_model: str | None = None
-    image_quality: str | None = None
-    scene_style: str | None = None
-    scene_style_id: uuid.UUID | None = None
-
-    @field_validator("scene_style_id", mode="before")
-    @classmethod
-    def blank_style_id(cls, value: Any) -> Any:
-        if value is None or value == "":
-            return None
-        return value
-
-    @field_validator("image_quality")
-    @classmethod
-    def quality_allowed(cls, value: str | None) -> str | None:
-        if value is None or value == "":
-            return None
-        quality = value.strip().lower()
-        if quality not in IMAGE_QUALITIES:
-            raise ValueError("image_quality deve ser low, medium ou high")
-        return quality
 
 
 class ImageModelRead(BaseModel):

@@ -131,3 +131,10 @@ def test_list_image_models_falls_back_when_openapi_missing(monkeypatch):
     )
     models = client.list_image_models()
     assert models[0].id == FALLBACK_IMAGE_MODELS[0].id
+
+
+def test_list_image_models_openai_is_static():
+    from app.providers.image_provider import list_image_models
+
+    models = list_image_models("openai")
+    assert [item.id for item in models] == ["gpt-image-2", "gpt-image-1-mini"]

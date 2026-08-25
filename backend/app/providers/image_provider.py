@@ -11,6 +11,10 @@ DEFAULT_IMAGE_PROVIDER = "higgsfield"
 DEFAULT_IMAGE_SIZE = "1536x1024"
 DEFAULT_IMAGE_QUALITY = "medium"
 OPENAI_IMAGE_MODELS = ("gpt-image-2", "gpt-image-1-mini")
+OPENAI_IMAGE_MODEL_LABELS = {
+    "gpt-image-2": "GPT Image 2",
+    "gpt-image-1-mini": "GPT Image 1 Mini",
+}
 DEFAULT_OPENAI_MODEL = "gpt-image-2"
 DEFAULT_HIGGSFIELD_MODEL = "higgsfield-ai/soul/v2/standard"
 IMAGE_QUALITIES = frozenset({"low", "medium", "high"})
@@ -58,6 +62,19 @@ def default_image_model(provider: str) -> str:
     if provider == "openai":
         return DEFAULT_OPENAI_MODEL
     return DEFAULT_HIGGSFIELD_MODEL
+
+
+def list_image_models(provider: str) -> list[ImageModelInfo]:
+    """Catálogo de modelos do provider (OpenAI estático; Higgsfield via API)."""
+    name = parse_image_provider({"image_provider": provider})
+    if name == "openai":
+        return [
+            ImageModelInfo(id=model, name=OPENAI_IMAGE_MODEL_LABELS.get(model, model))
+            for model in OPENAI_IMAGE_MODELS
+        ]
+    from app.providers.higgsfield_client import HiggsfieldClient
+
+    return HiggsfieldClient().list_image_models()
 
 
 def get_image_provider(provider_name: str) -> ImageProvider:

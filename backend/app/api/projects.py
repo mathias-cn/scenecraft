@@ -37,13 +37,10 @@ from app.core.transcript_edits import TranscriptEditError, apply_transcript_edit
 from app.models.audio_track import AudioTrack
 from app.models.enums import AudioTrackSource, ProjectStage, ProjectStatus, SourceType
 from app.models.project import Project
-from app.providers.image_provider import OPENAI_IMAGE_MODELS, parse_image_provider
 from app.schemas.project import (
     AdvanceRead,
     AdvanceRequest,
     AudioGenerateRequest,
-    ImageModelRead,
-    MediaSettingsPatch,
     ProjectCreate,
     ProjectDetail,
     ProjectRead,
@@ -259,71 +256,6 @@ def patch_transcript(
     try:
         apply_transcript_edits(list(project.transcript_segments), payload.segments)
     except TranscriptEditError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    db.commit()
-    project = _detail_query(db, project_id)
-    if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    return ProjectDetail.model_validate(project)
-
-
-@router.get("/{project_id}/image-models")
-def list_image_models(project_id: UUID, db: DbDep) -> list[ImageModelRead]:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    try:
-        provider = parse_image_provider(project.automation_config)
-    except Exception as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    if provider == "openai":
-        labels = {"gpt-image-2": "GPT Image 2", "gpt-image-1-mini": "GPT Image 1 Mini"}
-        return [ImageModelRead(id=model, name=labels.get(model, model)) for model in OPENAI_IMAGE_MODELS]
-    from app.providers.higgsfield_client import HiggsfieldClient
-
-    try:
-        models = HiggsfieldClient().list_image_models()
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"não foi possível listar modelos Higgsfield: {exc}",
-        ) from exc
-    return [ImageModelRead(id=model.id, name=model.name) for model in models]
-
-
-@router.patch("/{project_id}/media-settings")
-def patch_media_settings(
-    project_id: UUID,
-    payload: MediaSettingsPatch,
-    db: DbDep,
-) -> ProjectDetail:
-    project = _detail_query(db, project_id)
-    if project is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
-    if project.current_stage is not ProjectStage.SCENE_REVIEW:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="modelo de imagem só pode ser definido em scene_review",
-        )
-    config = dict(project.automation_config or {})
-    if payload.image_model is not None:
-        config["image_model"] = payload.image_model
-    if payload.image_quality is not None:
-        config["image_quality"] = payload.image_quality
-    if not config.get("character_id"):
-        if payload.scene_style is not None:
-            config["scene_style"] = payload.scene_style
-        if payload.scene_style_id is not None:
-            config["scene_style_id"] = str(payload.scene_style_id)
-    try:
-        config = apply_cast_to_config(
-            db,
-            config,
-            scene_style_id=payload.scene_style_id if not config.get("character_id") else None,
-        )
-        project.automation_config = normalize_automation_config(config)
-        flag_modified(project, "automation_config")
-    except (ProjectCastError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     db.commit()
     project = _detail_query(db, project_id)

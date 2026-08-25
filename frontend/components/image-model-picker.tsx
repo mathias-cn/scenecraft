@@ -6,17 +6,16 @@ import { listImageModels } from "@/lib/api";
 import {
   IMAGE_QUALITIES,
   OPENAI_IMAGE_MODELS,
-  imageProviderOf,
   type ImageProviderName,
   type ImageQuality,
 } from "@/lib/project-form";
-import type { ImageModelOption, ProjectDetail } from "@/lib/types";
+import type { ImageModelOption } from "@/lib/types";
 
 const FIELD =
   "mt-2 w-full rounded-md border border-white/10 bg-ink-950 px-3 py-2 font-sans text-sm font-normal tracking-normal text-white normal-case outline-none focus:border-brass-500";
 
 type ImageModelPickerProps = {
-  project: ProjectDetail;
+  provider: ImageProviderName;
   model: string;
   quality: ImageQuality;
   onModelChange: (model: string) => void;
@@ -24,13 +23,12 @@ type ImageModelPickerProps = {
 };
 
 export function ImageModelPicker({
-  project,
+  provider,
   model,
   quality,
   onModelChange,
   onQualityChange,
 }: ImageModelPickerProps) {
-  const provider: ImageProviderName = imageProviderOf(project.automation_config);
   const [models, setModels] = useState<ImageModelOption[]>(
     provider === "openai" ? [...OPENAI_IMAGE_MODELS] : [],
   );
@@ -41,12 +39,16 @@ export function ImageModelPicker({
     if (provider !== "higgsfield") {
       setModels([...OPENAI_IMAGE_MODELS]);
       setLoading(false);
+      setError(null);
+      if (!OPENAI_IMAGE_MODELS.some((item) => item.id === model)) {
+        onModelChange(OPENAI_IMAGE_MODELS[0].id);
+      }
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    void listImageModels(project.id)
+    void listImageModels("higgsfield")
       .then((next) => {
         if (cancelled) return;
         setModels(next);
@@ -65,15 +67,12 @@ export function ImageModelPicker({
     return () => {
       cancelled = true;
     };
-  }, [project.id, provider]); // eslint-disable-line react-hooks/exhaustive-deps -- catálogo só recarrega com projeto/provider
+    // Catálogo só recarrega quando o provider muda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [provider]);
 
   return (
-    <div className="mt-5 rounded-lg border border-white/10 bg-ink-950/50 p-4">
-      <p className="label-tech">Estilo / modelo</p>
-      <p className="mt-1 mb-3 text-sm text-white/45">
-        Escolha o modelo usado na geração das cenas
-        {provider === "openai" ? " e a qualidade da OpenAI." : " na Higgsfield."}
-      </p>
+    <div className="mt-4">
       <label className="label-tech block">
         Modelo
         <select
