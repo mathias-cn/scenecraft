@@ -14,6 +14,10 @@ import type {
 export { ApiError } from "./api-client";
 export { getApiBaseUrl } from "./config";
 
+export function generateTitles(draftTitle: string) {
+  return apiPost<{ titles: string[] }>("/api/ai/generate-titles", { draft_title: draftTitle });
+}
+
 export function listProjects() {
   return apiGet<Project[]>("/api/projects");
 }

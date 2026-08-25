@@ -43,6 +43,18 @@ Regras:
 - title é um título opcional se o input não trouxer um bom título.
 - Idioma da descrição = idioma pedido no JSON de entrada."""
 
+TITLE_SYSTEM = """Você sugere títulos de YouTube a partir de um rascunho.
+Responda só com um objeto JSON na forma:
+{"titles":["...","...","..."]}
+Regras:
+- Exatamente 3 títulos, distintos entre si.
+- Mesmo idioma do rascunho.
+- Tema e tom similares ao rascunho; não fuja do assunto.
+- Curtos, específicos, sem aspas, sem numeração, sem hashtag.
+- Cada título cabe em uma linha (no máximo ~70 caracteres)."""
+
+DEFAULT_TITLE_MODEL = "gpt-5-nano"
+
 
 class LLMError(ValueError):
     """Falha no cliente LLM."""
@@ -56,7 +68,13 @@ class LLMProvider(ABC):
     """Interface de completion JSON. Trocar de provider não muda quem chama as helpers."""
 
     @abstractmethod
-    def structured_completion(self, system_prompt: str, user_content: str) -> dict:
+    def structured_completion(
+        self,
+        system_prompt: str,
+        user_content: str,
+        *,
+        model: str | None = None,
+    ) -> dict:
         """Força JSON nativo da API e devolve um dict."""
 
 
@@ -86,9 +104,15 @@ class OpenAILLMProvider(LLMProvider):
         except OpenAIKeyError as exc:
             raise LLMError(str(exc)) from exc
 
-    def structured_completion(self, system_prompt: str, user_content: str) -> dict:
+    def structured_completion(
+        self,
+        system_prompt: str,
+        user_content: str,
+        *,
+        model: str | None = None,
+    ) -> dict:
         response = self._client_or_default().chat.completions.create(
-            model=CHAT_MODEL,
+            model=(model or CHAT_MODEL).strip() or CHAT_MODEL,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
@@ -112,9 +136,14 @@ def set_llm_provider(provider: LLMProvider) -> None:
     _provider = provider
 
 
-def structured_completion(system_prompt: str, user_content: str) -> dict:
+def structured_completion(
+    system_prompt: str,
+    user_content: str,
+    *,
+    model: str | None = None,
+) -> dict:
     """Chat Completions com `response_format={"type": "json_object"}`."""
-    return get_llm_provider().structured_completion(system_prompt, user_content)
+    return get_llm_provider().structured_completion(system_prompt, user_content, model=model)
 
 
 def _segment_payload(segment: Mapping[str, Any], index: int) -> dict[str, Any]:
@@ -246,3 +275,40 @@ def generate_description(
         "text": text,
         "title": str(result.get("title") or title).strip() or title,
     }
+
+
+def title_model() -> str:
+    from app.core.config import settings
+
+    raw = str(getattr(settings, "openai_title_model", "") or "").strip()
+    return raw or DEFAULT_TITLE_MODEL
+
+
+def generate_titles(draft_title: str) -> list[str]:
+    """Devolve 3 sugestões de título no mesmo tema/tom do rascunho."""
+    draft = (draft_title or "").strip()
+    if not draft:
+        raise LLMError("draft_title vazio")
+    payload = {"draft_title": draft, "count": 3}
+    result = structured_completion(
+        TITLE_SYSTEM,
+        json.dumps(payload, ensure_ascii=False),
+        model=title_model(),
+    )
+    raw = result.get("titles")
+    if not isinstance(raw, list):
+        raise LLMJSONError("JSON de títulos deve conter a lista 'titles'")
+    titles: list[str] = []
+    seen: set[str] = set()
+    for item in raw:
+        text = str(item or "").strip().strip('"').strip("'")
+        key = text.casefold()
+        if not text or key in seen:
+            continue
+        seen.add(key)
+        titles.append(text)
+        if len(titles) == 3:
+            break
+    if len(titles) < 3:
+        raise LLMJSONError("JSON de títulos deve conter 3 títulos")
+    return titles

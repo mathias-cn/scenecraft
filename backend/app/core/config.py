@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     higgsfield_api_secret: str = ""
     elevenlabs_api_key: str = ""
     openai_api_key: str = ""
+    openai_title_model: str = "gpt-5-nano"
 
     youtube_client_id: str = ""
     youtube_client_secret: str = ""

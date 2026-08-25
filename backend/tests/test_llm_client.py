@@ -196,3 +196,52 @@ def test_generate_description_from_transcript(monkeypatch):
     )
     result = generate_description(title="Mar", transcript="o mar é azul", language="pt-BR")
     assert result == {"text": "Um vídeo sobre o mar.", "title": "O Mar"}
+
+
+def test_structured_completion_uses_override_model():
+    recorder: list[dict] = []
+    set_llm_provider(OpenAILLMProvider(client=_client('{"ok": true}', recorder)))
+    structured_completion("sys", "user", model="gpt-5-nano")
+    assert recorder[0]["model"] == "gpt-5-nano"
+
+
+def test_generate_titles_returns_three_suggestions(monkeypatch):
+    from app.providers.llm_client import generate_titles
+
+    captured: list[tuple[str, str, str | None]] = []
+
+    def fake_completion(system_prompt: str, user_content: str, *, model: str | None = None) -> dict:
+        captured.append((system_prompt, user_content, model))
+        return {
+            "titles": [
+                "Como eu automatizei meu canal em 30 dias",
+                "O método simples para automatizar o canal",
+                "Automatizei o YouTube — o que realmente funcionou",
+            ]
+        }
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    monkeypatch.setattr("app.providers.llm_client.title_model", lambda: "gpt-5-nano")
+    titles = generate_titles("Como eu automatizei meu canal")
+    assert len(titles) == 3
+    assert "automatizei" in titles[0].lower()
+    assert "draft_title" in captured[0][1]
+    assert captured[0][2] == "gpt-5-nano"
+
+
+def test_generate_titles_rejects_empty():
+    from app.providers.llm_client import generate_titles
+
+    with pytest.raises(LLMError, match="vazio"):
+        generate_titles("   ")
+
+
+def test_generate_titles_requires_three_items(monkeypatch):
+    from app.providers.llm_client import generate_titles
+
+    monkeypatch.setattr(
+        "app.providers.llm_client.structured_completion",
+        lambda *_a, **_k: {"titles": ["só um"]},
+    )
+    with pytest.raises(LLMJSONError, match="3 títulos"):
+        generate_titles("rascunho")

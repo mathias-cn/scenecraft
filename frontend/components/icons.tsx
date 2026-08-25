@@ -59,6 +59,23 @@ export function IconMenu({ className }: IconProps) {
   );
 }
 
+export function IconSparkles({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path
+        d="M10 2.5l.7 3.6L14 7.2l-3.3 1.1L10 12l-.7-3.7L6 7.2l3.3-1.1L10 2.5z"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M15.2 11.2l.35 1.8 1.65.55-1.65.55-.35 1.8-.35-1.8-1.65-.55 1.65-.55.35-1.8zM4.6 12.2l.3 1.5 1.4.45-1.4.45-.3 1.5-.3-1.5-1.4-.45 1.4-.45.3-1.5z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function IconClose({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>

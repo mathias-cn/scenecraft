@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { CharacterSelect } from "@/components/character-select";
 import { StyleSelect } from "@/components/style-select";
+import { TitleSuggestDialog } from "@/components/title-suggest-dialog";
 import { createProject } from "@/lib/api";
 import {
   AUDIO_GENERATION_MODES,
@@ -127,16 +128,19 @@ export function ProjectCreateForm() {
     <form onSubmit={onSubmit} className="space-y-8">
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
         <p className="label-tech">Projeto</p>
-        <label className="label-tech mt-4 block">
+        <div className="label-tech mt-4 block">
           Título
-          <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            className={FIELD}
-            placeholder="Como eu automatizei meu canal"
-            required
-          />
-        </label>
+          <div className="flex items-start gap-2">
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              className={FIELD}
+              placeholder="Como eu automatizei meu canal"
+              required
+            />
+            <TitleSuggestDialog currentTitle={title} onSelect={setTitle} />
+          </div>
+        </div>
       </section>
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
