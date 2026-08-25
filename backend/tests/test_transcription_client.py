@@ -6,13 +6,22 @@ from app.providers.transcription_client import (
     OpenAITranscriptionProvider,
     Segment,
     TranscriptionError,
+    TranscriptionProvider,
     cut_points_from_nonsilent,
     language_param,
     pack_ranges,
     seconds_to_ms,
     segments_from_verbose,
+    set_transcription_provider,
     transcribe,
 )
+
+
+@pytest.fixture(autouse=True)
+def restore_default_provider():
+    set_transcription_provider(OpenAITranscriptionProvider())
+    yield
+    set_transcription_provider(OpenAITranscriptionProvider())
 
 
 def test_seconds_to_ms_rounds():
@@ -172,3 +181,31 @@ def test_chunked_transcription_adds_duration_offsets(tmp_path, monkeypatch):
         Segment(start_ms=1500, end_ms=1700, text="dois"),
     ]
     assert [call["model"] for call in recorder] == ["whisper-1", "whisper-1"]
+    assert all(call["response_format"] == "verbose_json" for call in recorder)
+    assert all(call["timestamp_granularities"] == ["segment"] for call in recorder)
+
+
+def test_openai_provider_is_transcription_provider():
+    assert issubclass(OpenAITranscriptionProvider, TranscriptionProvider)
+    assert isinstance(OpenAITranscriptionProvider(), TranscriptionProvider)
+
+
+def test_transcribe_delegates_to_swapped_provider():
+    class FakeProvider(TranscriptionProvider):
+        def transcribe(self, audio_path: str, language: str = "auto") -> list[Segment]:
+            return [Segment(start_ms=0, end_ms=900, text=f"{audio_path}:{language}")]
+
+    set_transcription_provider(FakeProvider())
+    segs = transcribe("clip.wav", language="es")
+    assert segs == [Segment(start_ms=0, end_ms=900, text="clip.wav:es")]
+
+
+def test_set_transcription_provider_rejects_non_interface():
+    with pytest.raises(TypeError, match="TranscriptionProvider"):
+        set_transcription_provider(object())  # type: ignore[arg-type]
+
+
+def test_whisper_model_is_locked_to_whisper_1():
+    from app.providers.transcription_client import WHISPER_MODEL
+
+    assert WHISPER_MODEL == "whisper-1"

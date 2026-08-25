@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import io
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 from app.core.config import settings
 
+# whisper-1 is the only OpenAI model that supports verbose_json + segment timestamps.
+# Do not switch to gpt-transcribe / gpt-4o-transcribe.
 WHISPER_MODEL = "whisper-1"
 WHISPER_MAX_BYTES = 25 * 1024 * 1024
 # mp3 64 kbps: margem abaixo de 25 MB para o envelope do upload
@@ -29,7 +32,10 @@ class Segment:
     text: str
 
 
-class TranscriptionProvider(Protocol):
+class TranscriptionProvider(ABC):
+    """Interface de transcrição. Trocar de provider não muda quem chama `transcribe()`."""
+
+    @abstractmethod
     def transcribe(self, audio_path: str, language: str = "auto") -> list[Segment]:
         """Transcreve um arquivo de áudio em segmentos com timestamps em ms."""
 
@@ -154,7 +160,7 @@ def _export_mp3(chunk) -> io.BytesIO:
     return buf
 
 
-class OpenAITranscriptionProvider:
+class OpenAITranscriptionProvider(TranscriptionProvider):
     def __init__(self, client: Any | None = None) -> None:
         self._client = client
 
@@ -194,5 +200,19 @@ class OpenAITranscriptionProvider:
         return segments
 
 
+_provider: TranscriptionProvider = OpenAITranscriptionProvider()
+
+
+def get_transcription_provider() -> TranscriptionProvider:
+    return _provider
+
+
+def set_transcription_provider(provider: TranscriptionProvider) -> None:
+    if not isinstance(provider, TranscriptionProvider):
+        raise TypeError("provider must be a TranscriptionProvider")
+    global _provider
+    _provider = provider
+
+
 def transcribe(audio_path: str, language: str = "auto") -> list[Segment]:
-    return OpenAITranscriptionProvider().transcribe(audio_path, language)
+    return get_transcription_provider().transcribe(audio_path, language)
