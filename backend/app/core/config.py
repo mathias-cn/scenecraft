@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     celery_loglevel: str = "info"
+    celery_task_max_retries: int = Field(default=2, ge=0, le=10)
+    celery_retry_backoff_base: int = Field(default=2, ge=1, le=60)
+
     celery_concurrency_transcribe: int = Field(default=2, ge=1, le=32)
     celery_concurrency_scene_planning: int = Field(default=2, ge=1, le=32)
     celery_concurrency_media_gen: int = Field(default=1, ge=1, le=32)
@@ -65,6 +68,12 @@ class Settings(BaseSettings):
     rate_limit_thumbnail: int = Field(default=10, ge=1)
     rate_limit_description: int = Field(default=20, ge=1)
     rate_limit_upload: int = Field(default=6, ge=1)
+
+    provider_concurrency_higgsfield: int = Field(default=2, ge=1, le=32)
+    provider_concurrency_elevenlabs: int = Field(default=3, ge=1, le=32)
+    provider_concurrency_anthropic: int = Field(default=4, ge=1, le=32)
+    provider_concurrency_youtube: int = Field(default=1, ge=1, le=32)
+    provider_concurrency_r2: int = Field(default=4, ge=1, le=32)
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -101,6 +110,13 @@ class Settings(BaseSettings):
     def rate_limit_for(self, queue: str) -> int:
         name = getattr(queue, "value", queue)
         return getattr(self, f"rate_limit_{name}")
+
+    def provider_concurrency_for(self, provider: str) -> int:
+        name = provider.strip().lower()
+        attr = f"provider_concurrency_{name}"
+        if hasattr(self, attr):
+            return getattr(self, attr)
+        return 2
 
 
 @lru_cache

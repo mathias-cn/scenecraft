@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.models.enums import JobStatus, ProjectStage
 
@@ -12,6 +12,7 @@ class JobRead(BaseModel):
     project_id: uuid.UUID
     stage: ProjectStage
     job_type: str
+    job_group_id: uuid.UUID | None = None
     status: JobStatus
     attempt_count: int
     payload: dict[str, Any]

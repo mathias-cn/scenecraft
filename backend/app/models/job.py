@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Integer, String, Text, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import DateTime, Index, Integer, String, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
@@ -18,15 +19,18 @@ if TYPE_CHECKING:
 
 class Job(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
     __tablename__ = "jobs"
+    __table_args__ = (Index("ix_jobs_project_id_job_group_id", "project_id", "job_group_id"),)
 
     stage: Mapped[ProjectStage] = mapped_column(
         pg_enum(ProjectStage, "project_stage"), nullable=False
     )
     job_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    job_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     status: Mapped[JobStatus] = mapped_column(
         pg_enum(JobStatus, "job_status"),
         nullable=False,
-        default=JobStatus.PENDING,
+        default=JobStatus.QUEUED,
+        server_default=text("'queued'::job_status"),
     )
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")

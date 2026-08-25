@@ -78,7 +78,8 @@ class YoutubeUploadStatus(str, enum.Enum):
 
 
 class JobStatus(str, enum.Enum):
-    PENDING = "pending"
+    QUEUED = "queued"
     RUNNING = "running"
-    COMPLETED = "completed"
+    SUCCEEDED = "succeeded"
     FAILED = "failed"
+    RETRYING = "retrying"

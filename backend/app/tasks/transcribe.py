@@ -1,16 +1,6 @@
-from sqlalchemy.orm import Session
-
-from app.celery_app import celery_app
-from app.core.queues import JobQueue
-from app.models.job import Job
-from app.models.project import Project
-from app.tasks.base import execute_stage
+from app.tasks.base import pipeline_task
 
 
-def _run(_db: Session, job: Job, project: Project) -> dict:
+@pipeline_task(name="scenecraft.transcribe", provider="anthropic")
+def transcribe(_self, _db, job, project) -> dict:
     return {"title": project.title, "source_ref": project.source_ref, "job_id": str(job.id)}
-
-
-@celery_app.task(name="scenecraft.transcribe")
-def transcribe(job_id: str) -> dict:
-    return execute_stage(job_id, JobQueue.TRANSCRIBE, _run)

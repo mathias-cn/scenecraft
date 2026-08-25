@@ -12,7 +12,7 @@ from app.core.state_machine import (
     linear_next,
     parse_stage,
 )
-from app.models.enums import ProjectStage, ProjectStatus, SourceType
+from app.models.enums import JobStatus, ProjectStage, ProjectStatus, SourceType
 
 
 def test_parse_stage_accepts_enum_and_names():
@@ -145,6 +145,10 @@ def test_created_advances_to_transcribing_and_dispatches_job(monkeypatch):
     assert result.dispatched_job_id is not None
     assert enqueued[0][0] == "transcribe"
     assert db.commits == 1
+    job = db.added[0]
+    assert job.status is JobStatus.QUEUED
+    assert job.job_group_id is not None
+    assert job.attempt_count == 0
 
 
 def test_transcribing_pauses_on_review_without_auto_flag(monkeypatch):

@@ -125,6 +125,8 @@ Veja `.env.example`. As principais:
 | `DATABASE_URL_MIGRATIONS` | Conexão direta Supabase (`5432`) — Alembic |
 | `REDIS_URL` | Broker e result backend do Celery |
 | `CELERY_CONCURRENCY_*` | Concorrência por fila (ex. `CELERY_CONCURRENCY_MEDIA_GEN=1`) |
+| `CELERY_TASK_MAX_RETRIES` | Retries Celery após a 1ª execução (padrão `2` = 3 tentativas) |
+| `PROVIDER_CONCURRENCY_*` | Semáforo Redis por provider (`higgsfield`, `elevenlabs`, `anthropic`, `youtube`, `r2`) |
 | `RATE_LIMIT_*` | Teto de jobs por janela Redis (`RATE_LIMIT_WINDOW_SECONDS`) |
 | `HIGGSFIELD_API_KEY` | Geração de vídeo |
 | `ELEVENLABS_API_KEY` | TTS / narração |

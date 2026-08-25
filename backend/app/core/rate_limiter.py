@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import time
 
-import redis
-
 from app.core.config import settings
 from app.core.queues import JobQueue
+
+
+class RateLimitExceeded(Exception):
+    def __init__(self, key: str):
+        super().__init__(f"rate limit exceeded: {key}")
+        self.key = key
+
 
 _INCR_EXPIRE = """
 local current = redis.call('INCR', KEYS[1])
@@ -18,19 +23,15 @@ return current
 """
 
 
-class RateLimitExceeded(Exception):
-    def __init__(self, key: str):
-        super().__init__(f"rate limit exceeded: {key}")
-        self.key = key
-
-
 class RateLimiter:
     def __init__(self) -> None:
-        self._redis: redis.Redis | None = None
+        self._redis = None
         self._script = None
 
-    def _client(self) -> redis.Redis:
+    def _client(self):
         if self._redis is None:
+            import redis
+
             self._redis = redis.Redis.from_url(settings.redis_url, decode_responses=True)
             self._script = self._redis.register_script(_INCR_EXPIRE)
         return self._redis
@@ -41,7 +42,8 @@ class RateLimiter:
         return f"scenecraft:ratelimit:{name}:{slot}"
 
     def try_acquire(self, name: str, limit: int) -> bool:
-        self._client()
+        if self._script is None:
+            self._client()
         current = int(self._script(keys=[self._bucket_key(name)], args=[settings.rate_limit_window_seconds]))
         return current <= limit
 

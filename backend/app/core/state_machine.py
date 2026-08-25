@@ -127,23 +127,50 @@ def _load_project(db: Session, project_id: UUID | str) -> Project:
     return project
 
 
-def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
+def dispatch_job_group(
+    db: Session,
+    project: Project,
+    stage: ProjectStage,
+    payloads: list[dict[str, Any]],
+    *,
+    job_group_id: UUID | None = None,
+) -> tuple[UUID, list[Job]]:
+    """Cria N jobs queued com o mesmo `job_group_id` e enfileira no Celery."""
+    if not payloads:
+        raise IllegalTransition(f"{stage.value} exige ao menos um job no grupo")
     step = step_for_stage(stage)
     if step is None:
         raise IllegalTransition(f"{stage.value} não possui job associado")
-    source_type = project.source_type.value if hasattr(project.source_type, "value") else str(project.source_type)
-    job = Job(
-        id=uuid4(),
-        project_id=project.id,
-        stage=stage,
-        job_type=step.queue.value,
-        status=JobStatus.PENDING,
-        payload={"source_type": source_type, "source_ref": project.source_ref},
-    )
-    db.add(job)
+    group_id = job_group_id or uuid4()
+    jobs: list[Job] = []
+    for payload in payloads:
+        job = Job(
+            id=uuid4(),
+            project_id=project.id,
+            stage=stage,
+            job_type=step.queue.value,
+            status=JobStatus.QUEUED,
+            job_group_id=group_id,
+            attempt_count=0,
+            payload=payload,
+        )
+        db.add(job)
+        jobs.append(job)
     db.flush()
-    enqueue_job(step, job.id)
-    return job
+    for job in jobs:
+        enqueue_job(step, job.id)
+    return group_id, jobs
+
+
+def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
+    source_type = project.source_type.value if hasattr(project.source_type, "value") else str(project.source_type)
+    _, jobs = dispatch_job_group(
+        db,
+        project,
+        stage,
+        [{"source_type": source_type, "source_ref": project.source_ref}],
+    )
+    return jobs[0]
 
 
 def advance_stage(
@@ -238,14 +265,20 @@ def mark_running(db: Session, job: Job, project: Project, step: QueueStep) -> No
     db.commit()
 
 
+def fail_project(db: Session, project: Project, error: str) -> None:
+    project.current_stage = ProjectStage.FAILED
+    project.status = ProjectStatus.FAILED
+    project.updated_at = _now()
+    db.commit()
+
+
 def fail(db: Session, job: Job, project: Project | None, error: str) -> None:
     job.status = JobStatus.FAILED
     job.error = error
     job.finished_at = _now()
     if project is not None:
-        project.current_stage = ProjectStage.FAILED
-        project.status = ProjectStatus.FAILED
-        project.updated_at = _now()
+        fail_project(db, project, error)
+        return
     db.commit()
 
 
@@ -256,7 +289,7 @@ def complete_and_advance(
     result: dict[str, Any] | None = None,
 ) -> AdvanceResult:
     step = step_for_queue(job.job_type)
-    job.status = JobStatus.COMPLETED
+    job.status = JobStatus.SUCCEEDED
     job.result = result or {}
     job.finished_at = _now()
     db.flush()
