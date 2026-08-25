@@ -23,6 +23,20 @@ export function IconStyles({ className }: IconProps) {
   );
 }
 
+export function IconCharacters({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <circle cx="10" cy="7" r="2.6" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M4.5 16.2c.8-2.8 2.8-4.2 5.5-4.2s4.7 1.4 5.5 4.2"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function IconSettings({ className }: IconProps) {
   return (
     <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>

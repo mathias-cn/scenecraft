@@ -103,6 +103,25 @@ class OpenAIImageClient(ImageProvider):
         except OpenAIKeyError as exc:
             raise ImageProviderError(str(exc)) from exc
 
+    def _result_from_response(self, response: Any, *, model: str, quality: str, size: str) -> ImageResult:
+        data = getattr(response, "data", None) or []
+        if not data:
+            raise ImageProviderError("OpenAI Images devolveu resposta vazia")
+        first = data[0]
+        encoded = getattr(first, "b64_json", None) or (first.get("b64_json") if isinstance(first, dict) else None)
+        if not encoded:
+            raise ImageProviderError("OpenAI Images não devolveu b64_json")
+        try:
+            image_bytes = base64.b64decode(encoded)
+        except (ValueError, TypeError) as exc:
+            raise ImageProviderError("b64_json da OpenAI é inválido") from exc
+        if not image_bytes:
+            raise ImageProviderError("imagem decodificada veio vazia")
+        return ImageResult(
+            image_bytes=image_bytes,
+            cost_usd=estimate_image_cost_usd(model, quality, size),
+        )
+
     def generate_image(self, prompt: str, **kwargs: Any) -> ImageResult:
         model = str(kwargs.get("model") or DEFAULT_OPENAI_MODEL)
         quality = str(kwargs.get("quality") or DEFAULT_IMAGE_QUALITY)
@@ -124,23 +143,36 @@ class OpenAIImageClient(ImageProvider):
                 raise ContentModerationError("OpenAI recusou o prompt por moderação de conteúdo") from exc
             raise ImageProviderError(f"falha na OpenAI Images: {exc}") from exc
 
-        data = getattr(response, "data", None) or []
-        if not data:
-            raise ImageProviderError("OpenAI Images devolveu resposta vazia")
-        first = data[0]
-        encoded = getattr(first, "b64_json", None) or (first.get("b64_json") if isinstance(first, dict) else None)
-        if not encoded:
-            raise ImageProviderError("OpenAI Images não devolveu b64_json")
-        try:
-            image_bytes = base64.b64decode(encoded)
-        except (ValueError, TypeError) as exc:
-            raise ImageProviderError("b64_json da OpenAI é inválido") from exc
+        return self._result_from_response(response, model=model, quality=quality, size=size)
+
+    def edit_image(self, prompt: str, image_bytes: bytes, **kwargs: Any) -> ImageResult:
+        """Edita/varia uma imagem de referência (`client.images.edit`)."""
+        model = str(kwargs.get("model") or DEFAULT_OPENAI_MODEL)
+        quality = str(kwargs.get("quality") or DEFAULT_IMAGE_QUALITY)
+        size = str(kwargs.get("size") or DEFAULT_IMAGE_SIZE)
+        text = (prompt or "").strip()
+        if not text:
+            raise ImageProviderError("prompt vazio")
         if not image_bytes:
-            raise ImageProviderError("imagem decodificada veio vazia")
-        return ImageResult(
-            image_bytes=image_bytes,
-            cost_usd=estimate_image_cost_usd(model, quality, size),
-        )
+            raise ImageProviderError("imagem de referência vazia")
+
+        filename = str(kwargs.get("filename") or "reference.png")
+        content_type = str(kwargs.get("content_type") or "image/png")
+        try:
+            response = self._sdk().images.edit(
+                model=model,
+                image=(filename, image_bytes, content_type),
+                prompt=text,
+                quality=quality,
+                size=size,
+                n=1,
+            )
+        except Exception as exc:
+            if _is_moderation_error(exc):
+                raise ContentModerationError("OpenAI recusou o prompt por moderação de conteúdo") from exc
+            raise ImageProviderError(f"falha na OpenAI Images edit: {exc}") from exc
+
+        return self._result_from_response(response, model=model, quality=quality, size=size)
 
 
 def generate_image(

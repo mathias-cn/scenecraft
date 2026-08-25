@@ -16,7 +16,8 @@ function matchesStyle(item: Style, token: string | null | undefined): boolean {
 
 type StyleSelectProps = {
   value: string;
-  onChange: (slug: string) => void;
+  onChange: (value: string) => void;
+  valueKind?: "slug" | "id";
   includeSlug?: string | null;
   label?: string;
   hint?: string;
@@ -25,6 +26,7 @@ type StyleSelectProps = {
 export function StyleSelect({
   value,
   onChange,
+  valueKind = "slug",
   includeSlug,
   label = "Estilo visual",
   hint = "Usado na geração de cenas e personagens.",
@@ -50,8 +52,9 @@ export function StyleSelect({
         if (cancelled) return;
         setStyles(next);
         const selected = next.find((item) => matchesStyle(item, value) || matchesStyle(item, keep));
-        if (!value && next.length > 0) onChange(next[0].slug);
-        else if (selected && selected.slug !== value) onChange(selected.slug);
+        const tokenOf = (item: Style) => (valueKind === "id" ? item.id : item.slug);
+        if (!value && next.length > 0) onChange(tokenOf(next[0]));
+        else if (selected && tokenOf(selected) !== value) onChange(tokenOf(selected));
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Não foi possível carregar os estilos");
@@ -63,7 +66,7 @@ export function StyleSelect({
     return () => {
       cancelled = true;
     };
-  }, [includeSlug]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [includeSlug, valueKind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <label className="label-tech block">
@@ -75,7 +78,7 @@ export function StyleSelect({
         className={FIELD}
       >
         {styles.map((item) => (
-          <option key={item.id} value={item.slug}>
+          <option key={item.id} value={valueKind === "id" ? item.id : item.slug}>
             {item.name}
             {item.active ? "" : " (inativo)"}
           </option>

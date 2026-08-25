@@ -83,3 +83,21 @@ class JobStatus(str, enum.Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     RETRYING = "retrying"
+
+
+class CharacterStatus(str, enum.Enum):
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class CharacterAssetType(str, enum.Enum):
+    TPOSE_SIDE = "tpose_side"
+    TPOSE_BACK = "tpose_back"
+    HEAD_FRONT = "head_front"
+    HEAD_SIDE = "head_side"
+    HEAD_BACK = "head_back"
+    SITTING = "sitting"
+    HOLDING_MUG = "holding_mug"
+    SMILING = "smiling"
+    ANGRY = "angry"

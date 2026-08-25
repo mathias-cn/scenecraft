@@ -6,6 +6,7 @@ import logging
 import mimetypes
 import time
 from collections.abc import Callable
+from io import BytesIO
 from pathlib import Path
 from typing import TypeVar
 from urllib.parse import unquote, urlparse
@@ -238,3 +239,20 @@ def download_file(url: str, local_path: str) -> Path:
 
     _with_retry("download_file", _get)
     return destination
+
+
+def download_bytes(url: str) -> bytes:
+    """Baixa o objeto referenciado por `url` e devolve os bytes."""
+    if not url:
+        raise StorageError("url vazia")
+    bucket, key = _parse_location(url)
+
+    def _get() -> bytes:
+        buf = BytesIO()
+        _client().download_fileobj(Bucket=bucket, Key=key, Fileobj=buf)
+        return buf.getvalue()
+
+    data = _with_retry("download_bytes", _get)
+    if not data:
+        raise StorageError(f"objeto vazio: {url}")
+    return data

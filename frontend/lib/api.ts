@@ -1,6 +1,8 @@
 import { apiDelete, apiGet, apiPatch, apiPost } from "./api-client";
 import type {
   AdvanceResult,
+  Character,
+  CharacterStatus,
   ImageModelOption,
   Project,
   ProjectCreate,
@@ -77,4 +79,52 @@ export function patchStyle(id: string, active: boolean) {
 
 export function deleteStyle(id: string) {
   return apiDelete<void>(`/api/styles/${id}`);
+}
+
+export function listCharacters(status?: CharacterStatus) {
+  const query = status ? `?status=${status}` : "";
+  return apiGet<Character[]>(`/api/characters${query}`);
+}
+
+export function getCharacter(id: string) {
+  return apiGet<Character>(`/api/characters/${id}`);
+}
+
+export function createCharacter(
+  payload: { description_prompt: string; style_id: string; reference_image_url?: string | null },
+  file?: File | null,
+) {
+  if (file) {
+    const form = new FormData();
+    form.append("description_prompt", payload.description_prompt);
+    form.append("style_id", payload.style_id);
+    if (payload.reference_image_url) form.append("reference_image_url", payload.reference_image_url);
+    form.append("file", file);
+    return apiPost<Character>("/api/characters", form);
+  }
+  return apiPost<Character>("/api/characters", payload);
+}
+
+export function retryCharacter(
+  id: string,
+  payload: { description_prompt: string; style_id: string; reference_image_url?: string | null },
+  file?: File | null,
+) {
+  if (file) {
+    const form = new FormData();
+    form.append("description_prompt", payload.description_prompt);
+    form.append("style_id", payload.style_id);
+    if (payload.reference_image_url) form.append("reference_image_url", payload.reference_image_url);
+    form.append("file", file);
+    return apiPost<Character>(`/api/characters/${id}/retry`, form);
+  }
+  return apiPost<Character>(`/api/characters/${id}/retry`, payload);
+}
+
+export function approveCharacter(id: string) {
+  return apiPost<Character>(`/api/characters/${id}/approve`);
+}
+
+export function rejectCharacter(id: string) {
+  return apiPost<Character>(`/api/characters/${id}/reject`);
 }

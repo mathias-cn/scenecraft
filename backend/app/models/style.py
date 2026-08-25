@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, String, UniqueConstraint, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.mixins import UUIDPrimaryKeyMixin, utcnow
+
+if TYPE_CHECKING:
+    from app.models.character import Character
 
 
 class Style(UUIDPrimaryKeyMixin, Base):
@@ -27,3 +31,5 @@ class Style(UUIDPrimaryKeyMixin, Base):
         server_default=text("now()"),
         nullable=False,
     )
+
+    characters: Mapped[list[Character]] = relationship("Character", back_populates="style")

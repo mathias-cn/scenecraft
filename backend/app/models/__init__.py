@@ -1,8 +1,11 @@
 from app.models.audio_track import AudioTrack
+from app.models.character import Character, CharacterAsset
 from app.models.description import Description
 from app.models.enums import (
     AssemblyStatus,
     AudioTrackSource,
+    CharacterAssetType,
+    CharacterStatus,
     DescriptionSource,
     JobStatus,
     MediaType,
@@ -26,6 +29,10 @@ __all__ = [
     "AssemblyStatus",
     "AudioTrack",
     "AudioTrackSource",
+    "Character",
+    "CharacterAsset",
+    "CharacterAssetType",
+    "CharacterStatus",
     "Description",
     "DescriptionSource",
     "Job",

@@ -20,7 +20,13 @@ class FakeImages:
         self._recorder = recorder if recorder is not None else []
 
     def generate(self, **kwargs):
-        self._recorder.append(kwargs)
+        self._recorder.append(("generate", kwargs))
+        if self._error is not None:
+            raise self._error
+        return SimpleNamespace(data=[SimpleNamespace(b64_json=self._encoded)])
+
+    def edit(self, **kwargs):
+        self._recorder.append(("edit", kwargs))
         if self._error is not None:
             raise self._error
         return SimpleNamespace(data=[SimpleNamespace(b64_json=self._encoded)])
@@ -41,9 +47,10 @@ def test_generate_image_decodes_base64():
     result = client.generate_image("a cat", model="gpt-image-2", quality="medium", size="1536x1024")
     assert result.image_bytes == base64.b64decode(_PNG_B64)
     assert result.cost_usd == 0.041
-    assert recorder[0]["model"] == "gpt-image-2"
-    assert recorder[0]["quality"] == "medium"
-    assert recorder[0]["size"] == "1536x1024"
+    assert recorder[0][0] == "generate"
+    assert recorder[0][1]["model"] == "gpt-image-2"
+    assert recorder[0][1]["quality"] == "medium"
+    assert recorder[0][1]["size"] == "1536x1024"
 
 
 def test_module_generate_image_returns_bytes(monkeypatch):
@@ -66,3 +73,18 @@ def test_moderation_blocked_raises_content_error():
 def test_empty_prompt_raises():
     with pytest.raises(ImageProviderError, match="vazio"):
         OpenAIImageClient(client=_client()).generate_image("  ")
+
+
+def test_edit_image_sends_reference_bytes():
+    recorder: list = []
+    client = OpenAIImageClient(client=_client(recorder=recorder))
+    result = client.edit_image("keep identity", b"PNG-REF", model="gpt-image-2")
+    assert result.image_bytes == base64.b64decode(_PNG_B64)
+    assert recorder[0][0] == "edit"
+    assert recorder[0][1]["image"][1] == b"PNG-REF"
+    assert recorder[0][1]["prompt"] == "keep identity"
+
+
+def test_edit_empty_image_raises():
+    with pytest.raises(ImageProviderError, match="referência"):
+        OpenAIImageClient(client=_client()).edit_image("x", b"")

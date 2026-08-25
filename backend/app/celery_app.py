@@ -36,11 +36,15 @@ celery_app.conf.update(
         "scenecraft.thumbnail": {"queue": "thumbnail"},
         "scenecraft.description": {"queue": "description"},
         "scenecraft.upload": {"queue": "upload"},
+        "scenecraft.generate_character_base_image": {"queue": "media_gen"},
+        "scenecraft.generate_character_set": {"queue": "media_gen"},
+        "scenecraft.generate_character_asset": {"queue": "media_gen"},
     },
     result_expires=86400,
 )
 
 import app.tasks.audio_gen  # noqa: E402,F401
+import app.tasks.characters  # noqa: E402,F401
 import app.tasks.description  # noqa: E402,F401
 import app.tasks.media_gen  # noqa: E402,F401
 import app.tasks.render  # noqa: E402,F401

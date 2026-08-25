@@ -62,6 +62,39 @@ export type Style = {
   created_at: string;
 };
 
+export type CharacterStatus = "pending_approval" | "approved" | "rejected";
+
+export type CharacterAssetType =
+  | "tpose_side"
+  | "tpose_back"
+  | "head_front"
+  | "head_side"
+  | "head_back"
+  | "sitting"
+  | "holding_mug"
+  | "smiling"
+  | "angry";
+
+export type CharacterAsset = {
+  id: string;
+  character_id: string;
+  asset_type: CharacterAssetType;
+  image_url: string;
+  created_at: string;
+};
+
+export type Character = {
+  id: string;
+  description_prompt: string;
+  style_id: string;
+  style: Style | null;
+  reference_image_url: string | null;
+  base_image_url: string | null;
+  status: CharacterStatus;
+  created_at: string;
+  assets: CharacterAsset[];
+};
+
 export type Scene = {
   id: string;
   index: number;
