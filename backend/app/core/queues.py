@@ -27,14 +27,14 @@ class QueueStep:
 
 
 PIPELINE: tuple[QueueStep, ...] = (
-    QueueStep(JobQueue.TRANSCRIBE, "scenecraft.transcribe", ProjectStage.TRANSCRIBE),
-    QueueStep(JobQueue.SCENE_PLANNING, "scenecraft.scene_planning", ProjectStage.SCENE),
-    QueueStep(JobQueue.MEDIA_GEN, "scenecraft.media_gen", ProjectStage.SCENE),
-    QueueStep(JobQueue.AUDIO_GEN, "scenecraft.audio_gen", ProjectStage.AUDIO),
-    QueueStep(JobQueue.RENDER, "scenecraft.render", ProjectStage.ASSEMBLE),
-    QueueStep(JobQueue.THUMBNAIL, "scenecraft.thumbnail", ProjectStage.THUMBNAIL),
-    QueueStep(JobQueue.DESCRIPTION, "scenecraft.description", ProjectStage.DESCRIBE),
-    QueueStep(JobQueue.UPLOAD, "scenecraft.upload", ProjectStage.UPLOAD),
+    QueueStep(JobQueue.TRANSCRIBE, "scenecraft.transcribe", ProjectStage.TRANSCRIBING),
+    QueueStep(JobQueue.SCENE_PLANNING, "scenecraft.scene_planning", ProjectStage.SCENE_PLANNING),
+    QueueStep(JobQueue.MEDIA_GEN, "scenecraft.media_gen", ProjectStage.GENERATING_MEDIA),
+    QueueStep(JobQueue.AUDIO_GEN, "scenecraft.audio_gen", ProjectStage.AUDIO_STAGE),
+    QueueStep(JobQueue.RENDER, "scenecraft.render", ProjectStage.RENDERING),
+    QueueStep(JobQueue.THUMBNAIL, "scenecraft.thumbnail", ProjectStage.THUMBNAIL_STAGE),
+    QueueStep(JobQueue.DESCRIPTION, "scenecraft.description", ProjectStage.DESCRIPTION_STAGE),
+    QueueStep(JobQueue.UPLOAD, "scenecraft.upload", ProjectStage.UPLOADING),
 )
 
 QUEUE_NAMES: tuple[str, ...] = tuple(step.queue.value for step in PIPELINE)
@@ -50,6 +50,8 @@ TASK_MODULES: tuple[str, ...] = (
     "app.tasks.upload",
 )
 
+STAGE_TO_STEP: dict[ProjectStage, QueueStep] = {step.stage: step for step in PIPELINE}
+
 
 def step_for_queue(queue: JobQueue | str) -> QueueStep:
     name = queue.value if isinstance(queue, JobQueue) else queue
@@ -57,6 +59,10 @@ def step_for_queue(queue: JobQueue | str) -> QueueStep:
         if step.queue.value == name:
             return step
     raise KeyError(f"fila desconhecida: {name}")
+
+
+def step_for_stage(stage: ProjectStage) -> QueueStep | None:
+    return STAGE_TO_STEP.get(stage)
 
 
 def next_step(queue: JobQueue | str) -> QueueStep | None:

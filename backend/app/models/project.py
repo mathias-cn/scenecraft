@@ -37,7 +37,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     current_stage: Mapped[ProjectStage] = mapped_column(
         pg_enum(ProjectStage, "project_stage"),
         nullable=False,
-        default=ProjectStage.INGEST,
+        default=ProjectStage.CREATED,
     )
     status: Mapped[ProjectStatus] = mapped_column(
         pg_enum(ProjectStatus, "project_status"),

@@ -4,8 +4,6 @@ from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.core.queues import JobQueue
-
 
 def ensure_sslmode(url: str, mode: str = "require") -> str:
     """Append sslmode=require when the DSN does not already set it (Supabase exige SSL)."""
@@ -96,12 +94,12 @@ class Settings(BaseSettings):
     def celery_result_backend(self) -> str:
         return self.redis_url
 
-    def concurrency_for(self, queue: JobQueue | str) -> int:
-        name = queue.value if isinstance(queue, JobQueue) else queue
+    def concurrency_for(self, queue: str) -> int:
+        name = getattr(queue, "value", queue)
         return getattr(self, f"celery_concurrency_{name}")
 
-    def rate_limit_for(self, queue: JobQueue | str) -> int:
-        name = queue.value if isinstance(queue, JobQueue) else queue
+    def rate_limit_for(self, queue: str) -> int:
+        name = getattr(queue, "value", queue)
         return getattr(self, f"rate_limit_{name}")
 
 

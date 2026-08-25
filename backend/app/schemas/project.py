@@ -12,6 +12,21 @@ class ProjectCreate(BaseModel):
     source_type: SourceType
     source_ref: str = Field(min_length=1, max_length=8000)
     target_language: str = Field(default="pt-BR", min_length=2, max_length=16)
+    automation_config: dict[str, Any] = Field(default_factory=dict)
+
+
+class AdvanceRequest(BaseModel):
+    from_stage: ProjectStage
+
+
+class AdvanceRead(BaseModel):
+    project_id: uuid.UUID
+    from_stage: ProjectStage
+    to_stage: ProjectStage
+    status: ProjectStatus
+    paused_for_review: bool
+    dispatched_job_id: uuid.UUID | None = None
+    auto_advanced: bool = False
 
 
 class ProjectRead(BaseModel):

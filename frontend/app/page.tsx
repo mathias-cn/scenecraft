@@ -6,29 +6,42 @@ import { createProject, listProjects } from "@/lib/api";
 import type { Project, ProjectStage, ProjectStatus, SourceType } from "@/lib/types";
 
 const STAGES: ProjectStage[] = [
-  "ingest",
-  "transcribe",
-  "translate",
-  "scene",
-  "audio",
-  "assemble",
-  "thumbnail",
-  "describe",
-  "upload",
-  "complete",
+  "created",
+  "transcribing",
+  "transcript_review",
+  "scene_planning",
+  "scene_review",
+  "generating_media",
+  "media_review",
+  "audio_stage",
+  "audio_review",
+  "rendering",
+  "render_review",
+  "thumbnail_stage",
+  "description_stage",
+  "ready_to_publish",
+  "uploading",
+  "published",
 ];
 
 const STAGE_LABEL: Record<ProjectStage, string> = {
-  ingest: "Ingestão",
-  transcribe: "Transcrição",
-  translate: "Tradução",
-  scene: "Cenas",
-  audio: "Áudio",
-  assemble: "Montagem",
-  thumbnail: "Thumb",
-  describe: "Descrição",
-  upload: "YouTube",
-  complete: "Pronto",
+  created: "Criado",
+  transcribing: "Transcrição",
+  transcript_review: "Review transcrição",
+  scene_planning: "Cenas",
+  scene_review: "Review cenas",
+  generating_media: "Mídia",
+  media_review: "Review mídia",
+  audio_stage: "Áudio",
+  audio_review: "Review áudio",
+  rendering: "Render",
+  render_review: "Review render",
+  thumbnail_stage: "Thumb",
+  description_stage: "Descrição",
+  ready_to_publish: "Pronto p/ publicar",
+  uploading: "Upload",
+  published: "Publicado",
+  failed: "Falhou",
 };
 
 const SOURCE_LABEL: Record<SourceType, string> = {
@@ -218,9 +231,11 @@ export default function HomePage() {
                     className={`rounded-full px-3 py-1 text-xs tracking-wide uppercase ${
                       project.status === "failed"
                         ? "bg-red-500/20 text-red-300"
-                        : project.status === "completed"
+                        : project.status === "completed" || project.current_stage === "published"
                           ? "bg-brass-500/20 text-brass-400"
-                          : "bg-white/10 text-white/70"
+                          : project.status === "paused_for_review"
+                            ? "bg-white/10 text-brass-400"
+                            : "bg-white/10 text-white/70"
                     }`}
                   >
                     {STAGE_LABEL[project.current_stage]}
@@ -230,7 +245,10 @@ export default function HomePage() {
                   {STAGES.map((stage) => {
                     const currentIndex = STAGES.indexOf(project.current_stage);
                     const stageIndex = STAGES.indexOf(stage);
-                    const done = project.status === "completed" || stageIndex <= currentIndex;
+                    const done =
+                      project.status === "completed" ||
+                      project.current_stage === "published" ||
+                      stageIndex <= currentIndex;
                     return (
                       <span
                         key={stage}

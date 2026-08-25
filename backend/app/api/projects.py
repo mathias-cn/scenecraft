@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.state_machine import start_pipeline
+from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, start_pipeline
 from app.db import get_db
 from app.models.enums import ProjectStage, ProjectStatus
 from app.models.project import Project
-from app.schemas.project import ProjectCreate, ProjectRead
+from app.schemas.project import AdvanceRead, AdvanceRequest, ProjectCreate, ProjectRead
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -25,22 +25,31 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
         source_type=payload.source_type,
         source_ref=payload.source_ref,
         target_language=payload.target_language,
-        current_stage=ProjectStage.INGEST,
+        automation_config=payload.automation_config,
+        current_stage=ProjectStage.CREATED,
         status=ProjectStatus.PENDING,
     )
     db.add(project)
     db.commit()
     db.refresh(project)
-    start_pipeline(
-        db,
-        project,
-        payload={
-            "source_type": payload.source_type.value,
-            "source_ref": payload.source_ref,
-        },
-    )
+    start_pipeline(db, project)
     db.refresh(project)
     return project
+
+
+@router.post("/{project_id}/advance", response_model=AdvanceRead)
+def advance_project(
+    project_id: UUID,
+    payload: AdvanceRequest,
+    db: Session = Depends(get_db),
+) -> AdvanceRead:
+    try:
+        result = advance_stage(project_id, payload.from_stage, db=db)
+    except ProjectNotFound as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found") from exc
+    except IllegalTransition as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return AdvanceRead.model_validate(result)
 
 
 @router.get("/{project_id}", response_model=ProjectRead)
