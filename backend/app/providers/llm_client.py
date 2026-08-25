@@ -15,6 +15,7 @@ from typing import Any, Mapping, Sequence
 from app.providers.openai_auth import OpenAIKeyError, openai_client
 
 CHAT_MODEL = "gpt-4o-mini"
+TRANSLATE_BATCH_SIZE = 20
 
 PLAN_SCENES_SYSTEM = """Você agrupa segmentos de transcript em cenas visuais para um vídeo.
 Responda só com um objeto JSON na forma:
@@ -166,9 +167,29 @@ def translate_segments(
     segments: Sequence[Mapping[str, Any]],
     *,
     target_language: str,
+    batch_size: int = TRANSLATE_BATCH_SIZE,
 ) -> list[dict[str, Any]]:
-    """Traduz cada segmento e preserva start_ms/end_ms do original."""
+    """Traduz cada segmento e preserva start_ms/end_ms do original.
+
+    Lotes de `batch_size` (padrão 20) evitam estourar o contexto em transcripts longos.
+    """
     originals = [_segment_payload(segment, index) for index, segment in enumerate(segments)]
+    if not originals:
+        return []
+    size = max(1, int(batch_size))
+    translated: list[dict[str, Any]] = []
+    for start in range(0, len(originals), size):
+        translated.extend(
+            _translate_batch(originals[start : start + size], target_language=target_language)
+        )
+    return translated
+
+
+def _translate_batch(
+    originals: list[dict[str, Any]],
+    *,
+    target_language: str,
+) -> list[dict[str, Any]]:
     payload = {"target_language": target_language, "segments": originals}
     result = structured_completion(TRANSLATE_SYSTEM, json.dumps(payload, ensure_ascii=False))
     rows = result.get("segments")

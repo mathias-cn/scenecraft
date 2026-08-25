@@ -151,6 +151,40 @@ def test_translate_segments_keeps_original_timestamps(monkeypatch):
     ]
 
 
+def test_translate_segments_batches_long_transcripts(monkeypatch):
+    import json
+
+    calls: list[list[int]] = []
+
+    def fake_completion(_system: str, user_content: str) -> dict:
+        payload = json.loads(user_content)
+        indexes = [int(item["index"]) for item in payload["segments"]]
+        calls.append(indexes)
+        return {
+            "segments": [
+                {
+                    "index": item["index"],
+                    "start_ms": item["start_ms"],
+                    "end_ms": item["end_ms"],
+                    "text_translated": f"{item['text']}-pt",
+                }
+                for item in payload["segments"]
+            ]
+        }
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    items = [
+        {"index": index, "start_ms": index * 10, "end_ms": index * 10 + 9, "text": f"t{index}"}
+        for index in range(45)
+    ]
+    rows = translate_segments(items, target_language="pt", batch_size=20)
+    assert calls == [list(range(0, 20)), list(range(20, 40)), list(range(40, 45))]
+    assert len(rows) == 45
+    assert rows[0]["start_ms"] == 0
+    assert rows[21]["end_ms"] == 219
+    assert rows[44]["text_translated"] == "t44-pt"
+
+
 def test_generate_description_from_transcript(monkeypatch):
     monkeypatch.setattr(
         "app.providers.llm_client.structured_completion",

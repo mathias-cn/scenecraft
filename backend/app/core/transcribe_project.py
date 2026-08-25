@@ -13,12 +13,37 @@ from app.core.source_downloader import load_audio
 from app.core.state_machine import ProjectNotFound, advance_stage
 from app.models.project import Project
 from app.models.transcript_segment import TranscriptSegment
-from app.providers import transcription_client
+from app.providers import llm_client, transcription_client
 from app.providers.transcription_client import Segment, TranscriptionError
+
+_LANG_ALIASES = {
+    "portuguese": "pt",
+    "brazilian": "pt",
+    "english": "en",
+    "spanish": "es",
+    "castilian": "es",
+}
+
+
+def language_code(value: str | None) -> str:
+    """Normaliza `pt-BR` / `en` / `original` para o código ISO-639-1."""
+    raw = (value or "").strip().lower().replace("_", "-")
+    if not raw or raw in {"auto", "und", "original"}:
+        return ""
+    primary = raw.split("-", 1)[0]
+    return _LANG_ALIASES.get(primary, primary)
+
+
+def needs_translation(detected: str | None, target: str | None) -> bool:
+    dest = language_code(target)
+    src = language_code(detected)
+    if not dest or not src:
+        return False
+    return src != dest
 
 
 def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dict:
-    """Baixa o áudio, chama Whisper, grava `transcript_segments` e avança TRANSCRIBING."""
+    """Baixa o áudio, transcreve, traduz se preciso, grava segmentos e avança TRANSCRIBING."""
     session, owns = _session(db)
     try:
         pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
@@ -33,14 +58,17 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
         if not segments:
             raise TranscriptionError("transcrição vazia")
 
-        language = _detected_language(segments, project.target_language)
-        _replace_segments(session, project, segments, language)
+        detected = _whisper_language(segments)
+        language = (detected or project.target_language or "und")[:16]
+        translations = _translate_if_needed(segments, detected, project.target_language)
+        _replace_segments(session, project, segments, language, translations)
         session.flush()
         advance_stage(project.id, "TRANSCRIBING", db=session)
         return {
             "project_id": str(project.id),
             "segment_count": len(segments),
             "language": language,
+            "translated": bool(translations),
         }
     except Exception:
         session.rollback()
@@ -50,11 +78,31 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
             session.close()
 
 
-def _detected_language(segments: list[Segment], fallback: str) -> str:
+def _whisper_language(segments: list[Segment]) -> str:
     for segment in segments:
         if segment.language:
             return segment.language[:16]
-    return (fallback or "und")[:16]
+    return ""
+
+
+def _translate_if_needed(
+    segments: list[Segment],
+    detected: str,
+    target_language: str,
+) -> dict[int, str]:
+    if not needs_translation(detected, target_language):
+        return {}
+    payload = [
+        {
+            "index": index,
+            "start_ms": segment.start_ms,
+            "end_ms": segment.end_ms,
+            "text": segment.text,
+        }
+        for index, segment in enumerate(segments)
+    ]
+    rows = llm_client.translate_segments(payload, target_language=target_language)
+    return {int(row["index"]): str(row["text_translated"]) for row in rows}
 
 
 def _replace_segments(
@@ -62,6 +110,7 @@ def _replace_segments(
     project: Project,
     segments: list[Segment],
     language: str,
+    translations: dict[int, str],
 ) -> None:
     db.execute(delete(TranscriptSegment).where(TranscriptSegment.project_id == project.id))
     for index, segment in enumerate(segments):
@@ -72,6 +121,7 @@ def _replace_segments(
                 start_ms=segment.start_ms,
                 end_ms=segment.end_ms,
                 text_original=segment.text,
+                text_translated=translations.get(index),
                 language=(segment.language or language)[:16],
             )
         )

@@ -118,6 +118,8 @@ def test_transcribe_project_saves_segments_and_advances(monkeypatch, tmp_path):
 
     assert result["segment_count"] == 2
     assert result["language"] == "pt"
+    assert result["translated"] is False
+    assert db.added[0].text_translated is None
     assert len(db.executed) == 1
     assert [row.index for row in db.added] == [0, 1]
     assert db.added[0].text_original == "olá mundo"
@@ -140,7 +142,9 @@ def test_transcribe_project_uses_target_language_when_undetected(monkeypatch, tm
     monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
     result = transcribe_project(project.id, db=db)
     assert result["language"] == "es"
+    assert result["translated"] is False
     assert db.added[0].language == "es"
+    assert db.added[0].text_translated is None
 
 
 def test_transcribe_project_empty_transcript_does_not_advance(monkeypatch, tmp_path):
@@ -157,6 +161,80 @@ def test_transcribe_project_empty_transcript_does_not_advance(monkeypatch, tmp_p
     assert advanced == []
     assert db.rollbacks == 1
     assert db.added == []
+
+
+def test_transcribe_project_translates_when_target_differs(monkeypatch, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"x")
+    project = _project(source_ref=str(audio), target_language="pt-BR")
+    db = RecordingDB(project)
+    monkeypatch.setattr("app.core.transcribe_project.load_audio", lambda *_a: audio)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: [
+            Segment(start_ms=100, end_ms=400, text="hello there", language="en"),
+            Segment(start_ms=400, end_ms=900, text="how are you", language="en"),
+        ],
+    )
+    captured: list[list] = []
+
+    def fake_translate(payload, *, target_language, batch_size=20):
+        captured.append((list(payload), target_language, batch_size))
+        return [
+            {
+                "index": item["index"],
+                "start_ms": 0,
+                "end_ms": 0,
+                "text_original": item["text"],
+                "text_translated": f"pt:{item['text']}",
+            }
+            for item in payload
+        ]
+
+    monkeypatch.setattr("app.core.transcribe_project.llm_client.translate_segments", fake_translate)
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["translated"] is True
+    assert result["language"] == "en"
+    assert captured[0][1] == "pt-BR"
+    assert [row.start_ms for row in db.added] == [100, 400]
+    assert [row.end_ms for row in db.added] == [400, 900]
+    assert db.added[0].text_original == "hello there"
+    assert db.added[0].text_translated == "pt:hello there"
+    assert db.added[1].text_translated == "pt:how are you"
+
+
+def test_transcribe_project_skips_translation_for_original_target(monkeypatch, tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"x")
+    project = _project(source_ref=str(audio), target_language="original")
+    db = RecordingDB(project)
+    called = []
+    monkeypatch.setattr("app.core.transcribe_project.load_audio", lambda *_a: audio)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: [Segment(start_ms=0, end_ms=10, text="hello", language="en")],
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.llm_client.translate_segments",
+        lambda *_a, **_k: called.append(1) or [],
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+    result = transcribe_project(project.id, db=db)
+    assert result["translated"] is False
+    assert called == []
+    assert db.added[0].text_translated is None
+
+
+def test_needs_translation_compares_language_codes():
+    from app.core.transcribe_project import needs_translation
+
+    assert needs_translation("en", "pt-BR") is True
+    assert needs_translation("pt", "pt-BR") is False
+    assert needs_translation("en", "original") is False
+    assert needs_translation("", "pt") is False
 
 
 def test_celery_task_is_registered_with_project_id_signature():
