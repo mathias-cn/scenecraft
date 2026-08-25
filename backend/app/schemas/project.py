@@ -22,6 +22,9 @@ from app.providers.image_provider import (
     OPENAI_IMAGE_MODELS,
 )
 
+AUDIO_GENERATION_MODES = ("elevenlabs", "user_upload")
+_TRUE_VALUES = {True, 1, "1", "true", "True", "yes", "on"}
+
 
 def normalize_automation_config(
     config: dict[str, Any] | None,
@@ -63,6 +66,11 @@ def normalize_automation_config(
             merged[key] = str(uuid.UUID(str(raw).strip()))
         except ValueError as exc:
             raise ValueError(f"{key} deve ser um UUID") from exc
+    merged["reuse_original_audio"] = merged.get("reuse_original_audio") in _TRUE_VALUES
+    mode = str(merged.get("audio_generation_mode") or "elevenlabs").strip().lower()
+    if mode not in AUDIO_GENERATION_MODES:
+        raise ValueError("audio_generation_mode deve ser 'elevenlabs' ou 'user_upload'")
+    merged["audio_generation_mode"] = "elevenlabs" if merged["reuse_original_audio"] else mode
     return merged
 
 
@@ -99,8 +107,11 @@ class ProjectCreate(BaseModel):
 
     @model_validator(mode="after")
     def normalize_image_provider(self):
+        config = dict(self.automation_config)
+        if self.source_type is not SourceType.UPLOAD_AUDIO:
+            config["reuse_original_audio"] = False
         self.automation_config = normalize_automation_config(
-            self.automation_config,
+            config,
             image_provider=self.image_provider,
         )
         self.image_provider = self.automation_config["image_provider"]
@@ -144,6 +155,15 @@ class MediaSettingsPatch(BaseModel):
 class ImageModelRead(BaseModel):
     id: str
     name: str
+
+
+class VoiceRead(BaseModel):
+    id: str
+    name: str
+
+
+class AudioGenerateRequest(BaseModel):
+    voice_id: str = Field(min_length=1, max_length=128)
 
 
 class AdvanceRequest(BaseModel):

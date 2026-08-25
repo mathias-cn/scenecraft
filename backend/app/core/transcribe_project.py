@@ -9,6 +9,7 @@ from uuid import UUID
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
+from app.core.project_audio import persist_original_audio
 from app.core.source_downloader import load_audio
 from app.core.state_machine import ProjectNotFound, advance_stage
 from app.models.project import Project
@@ -53,6 +54,7 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
 
         with tempfile.TemporaryDirectory(prefix="scenecraft-transcribe-") as tmp:
             audio_path = load_audio(project, Path(tmp))
+            persist_original_audio(session, project, audio_path)
             segments = transcription_client.transcribe(str(audio_path), language="auto")
 
         if not segments:

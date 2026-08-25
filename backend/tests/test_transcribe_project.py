@@ -10,6 +10,11 @@ from app.providers.transcription_client import Segment, TranscriptionError
 from app.core.transcribe_project import transcribe_project
 
 
+@pytest.fixture(autouse=True)
+def stub_original_audio_persist(monkeypatch):
+    monkeypatch.setattr("app.core.transcribe_project.persist_original_audio", lambda *_a, **_k: None)
+
+
 class RecordingDB:
     def __init__(self, project):
         self.project = project

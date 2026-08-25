@@ -134,6 +134,31 @@ def test_project_create_accepts_optional_character_and_style_ids():
     assert payload.scene_style_id == sid
 
 
+def test_project_create_accepts_audio_automation_fields():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.UPLOAD_AUDIO,
+        source_ref="s3://bucket/a.mp3",
+        automation_config={
+            "reuse_original_audio": True,
+            "audio_generation_mode": "user_upload",
+        },
+    )
+    assert payload.automation_config["reuse_original_audio"] is True
+    assert payload.automation_config["audio_generation_mode"] == "elevenlabs"
+
+
+def test_project_create_forces_reuse_false_unless_upload_audio():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+        automation_config={"reuse_original_audio": True, "audio_generation_mode": "user_upload"},
+    )
+    assert payload.automation_config["reuse_original_audio"] is False
+    assert payload.automation_config["audio_generation_mode"] == "user_upload"
+
+
 def test_project_create_blank_cast_ids_become_none():
     payload = ProjectCreate(
         title="clip",

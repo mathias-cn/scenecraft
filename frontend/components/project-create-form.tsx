@@ -7,12 +7,14 @@ import { CharacterSelect } from "@/components/character-select";
 import { StyleSelect } from "@/components/style-select";
 import { createProject } from "@/lib/api";
 import {
+  AUDIO_GENERATION_MODES,
   AUTOMATION_TOGGLES,
   IMAGE_PROVIDERS,
   SOURCE_OPTIONS,
   TRANSCRIPT_LANGUAGES,
   defaultAutomation,
   toAutomationPayload,
+  type AudioGenerationMode,
   type AutomationConfig,
   type ImageProviderName,
   type TranscriptLanguage,
@@ -69,6 +71,8 @@ export function ProjectCreateForm() {
   const [lockedStyleId, setLockedStyleId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [automation, setAutomation] = useState<AutomationConfig>(defaultAutomation);
+  const [reuseOriginalAudio, setReuseOriginalAudio] = useState(false);
+  const [audioGenerationMode, setAudioGenerationMode] = useState<AudioGenerationMode>("elevenlabs");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const needsFile = sourceType !== "youtube_link";
@@ -77,6 +81,7 @@ export function ProjectCreateForm() {
     setSourceType(next);
     setFile(null);
     if (next !== "youtube_link") setSourceRef("");
+    if (next !== "upload_audio") setReuseOriginalAudio(false);
   }
 
   async function onSubmit(event: FormEvent) {
@@ -99,7 +104,10 @@ export function ProjectCreateForm() {
           source_type: sourceType,
           source_ref: needsFile ? undefined : sourceRef.trim(),
           target_language: language,
-          automation_config: toAutomationPayload(automation, imageProvider, sceneStyleId, characterId),
+          automation_config: toAutomationPayload(automation, imageProvider, sceneStyleId, characterId, {
+            reuseOriginalAudio: sourceType === "upload_audio" && reuseOriginalAudio,
+            audioGenerationMode,
+          }),
           image_provider: imageProvider,
           character_id: characterId || undefined,
           scene_style_id: sceneStyleId || undefined,
@@ -178,6 +186,45 @@ export function ProjectCreateForm() {
               placeholder="https://www.youtube.com/watch?v=…"
               required
             />
+          </label>
+        )}
+
+        {sourceType === "upload_audio" ? (
+          <label className="mt-4 flex items-start gap-3 text-sm text-white/80">
+            <input
+              type="checkbox"
+              checked={reuseOriginalAudio}
+              onChange={(event) => setReuseOriginalAudio(event.target.checked)}
+              className="mt-1 h-4 w-4 rounded border-white/20 bg-ink-950 text-brass-500"
+            />
+            <span>
+              Utilizar este áudio no render final
+              <span className="mt-1 block font-mono text-[10px] tracking-wide text-white/35">
+                Pula a etapa de áudio. Os timestamps da transcrição já valem para o render.
+              </span>
+            </span>
+          </label>
+        ) : null}
+
+        {reuseOriginalAudio ? null : (
+          <label className="label-tech mt-4 block">
+            Áudio
+            <select
+              value={audioGenerationMode}
+              onChange={(event) => setAudioGenerationMode(event.target.value as AudioGenerationMode)}
+              className={FIELD}
+            >
+              {AUDIO_GENERATION_MODES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="mt-2 block font-mono text-[10px] font-normal tracking-wide text-white/30 normal-case">
+              {audioGenerationMode === "elevenlabs"
+                ? "Narração gerada na etapa de áudio, com escolha de voz."
+                : "Você envia o áudio final na etapa de áudio; o Whisper realinha os tempos."}
+            </span>
           </label>
         )}
       </section>

@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.project_audio import attach_original_audio_for_render, should_skip_audio_stage
 from app.core.queues import QueueStep, step_for_queue, step_for_stage
 from app.models.enums import JobStatus, ProjectStage, ProjectStatus
 from app.models.job import Job
@@ -293,6 +294,35 @@ def advance_stage(
                 to_stage=nxt,
                 status=project.status,
                 paused_for_review=False,
+            )
+
+        if nxt is ProjectStage.AUDIO_STAGE and should_skip_audio_stage(project):
+            attach_original_audio_for_render(session, project)
+            project.current_stage = ProjectStage.RENDERING
+            nxt = ProjectStage.RENDERING
+            project.updated_at = _now()
+            project.status = ProjectStatus.RUNNING
+            job = _dispatch_work(session, project, nxt)
+            session.commit()
+            return AdvanceResult(
+                project_id=project.id,
+                from_stage=expected,
+                to_stage=nxt,
+                status=project.status,
+                paused_for_review=False,
+                dispatched_job_id=job.id,
+                auto_advanced=True,
+            )
+
+        if nxt is ProjectStage.AUDIO_STAGE:
+            project.status = ProjectStatus.PAUSED_FOR_REVIEW
+            session.commit()
+            return AdvanceResult(
+                project_id=project.id,
+                from_stage=expected,
+                to_stage=nxt,
+                status=project.status,
+                paused_for_review=True,
             )
 
         if is_review_stage(nxt) and not auto_flag_enabled(project.automation_config, nxt):

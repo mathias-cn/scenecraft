@@ -2,7 +2,7 @@ from json import JSONDecodeError
 from typing import Annotated
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -12,11 +12,18 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.api.deps import DbDep
 from app.core.ingest import (
     IngestError,
+    assert_audio_upload_filename,
     assert_upload_filename,
     parse_automation_config,
     persist_upload,
     resolve_source_ref,
     sanitize_filename,
+)
+from app.core.project_audio import (
+    audio_generation_mode,
+    set_final_audio,
+    should_skip_audio_stage,
+    start_audio_stage_job,
 )
 from app.core.project_cast import ProjectCastError, apply_cast_to_config
 from app.core.state_machine import (
@@ -27,18 +34,21 @@ from app.core.state_machine import (
     start_pipeline,
 )
 from app.core.transcript_edits import TranscriptEditError, apply_transcript_edits
-from app.models.enums import ProjectStage, ProjectStatus, SourceType
+from app.models.audio_track import AudioTrack
+from app.models.enums import AudioTrackSource, ProjectStage, ProjectStatus, SourceType
 from app.models.project import Project
 from app.providers.image_provider import OPENAI_IMAGE_MODELS, parse_image_provider
 from app.schemas.project import (
     AdvanceRead,
     AdvanceRequest,
+    AudioGenerateRequest,
     ImageModelRead,
     MediaSettingsPatch,
     ProjectCreate,
     ProjectDetail,
     ProjectRead,
     TranscriptPatchRequest,
+    VoiceRead,
     normalize_automation_config,
 )
 from app.storage import StorageError
@@ -315,6 +325,111 @@ def patch_media_settings(
         flag_modified(project, "automation_config")
     except (ProjectCastError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+def _require_audio_input(project: Project, expected_mode: str) -> None:
+    if project.current_stage is not ProjectStage.AUDIO_STAGE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="áudio só pode ser definido em audio_stage",
+        )
+    if project.status is not ProjectStatus.PAUSED_FOR_REVIEW:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="projeto não está aguardando áudio",
+        )
+    if should_skip_audio_stage(project):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="este projeto reutiliza o áudio original",
+        )
+    mode = audio_generation_mode(project.automation_config)
+    if mode != expected_mode:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"audio_generation_mode deste projeto é '{mode}'",
+        )
+
+
+@router.get("/{project_id}/audio/voices")
+def list_audio_voices(project_id: UUID, db: DbDep) -> list[VoiceRead]:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    from app.providers.elevenlabs import ElevenLabsError, list_voices
+
+    try:
+        voices = list_voices()
+    except ElevenLabsError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return [VoiceRead(id=voice.id, name=voice.name) for voice in voices]
+
+
+@router.post("/{project_id}/audio/generate")
+def generate_project_narration(
+    project_id: UUID,
+    payload: AudioGenerateRequest,
+    db: DbDep,
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    _require_audio_input(project, "elevenlabs")
+    config = dict(project.automation_config or {})
+    config["voice_id"] = payload.voice_id.strip()
+    project.automation_config = config
+    flag_modified(project, "automation_config")
+    project.status = ProjectStatus.RUNNING
+    start_audio_stage_job(
+        db,
+        project,
+        {"audio_generation_mode": "elevenlabs", "voice_id": payload.voice_id.strip()},
+    )
+    db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/audio/upload")
+def upload_project_audio(
+    project_id: UUID,
+    db: DbDep,
+    file: Annotated[UploadFile, File()],
+) -> ProjectDetail:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    _require_audio_input(project, "user_upload")
+    filename = sanitize_filename(file.filename, SourceType.UPLOAD_AUDIO)
+    try:
+        assert_audio_upload_filename(filename)
+        url = persist_upload(
+            file.file,
+            project_id=project.id,
+            filename=f"user_{filename}",
+            content_type=file.content_type,
+        )
+    except IngestError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    track = AudioTrack(
+        project_id=project.id,
+        source=AudioTrackSource.USER_UPLOAD,
+        provider="user_upload",
+        file_url=url,
+    )
+    db.add(track)
+    set_final_audio(db, project, url, AudioTrackSource.USER_UPLOAD.value)
+    project.status = ProjectStatus.RUNNING
+    start_audio_stage_job(db, project, {"audio_generation_mode": "user_upload"})
     db.commit()
     project = _detail_query(db, project_id)
     if project is None:

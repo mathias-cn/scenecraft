@@ -35,6 +35,13 @@ export const IMAGE_QUALITIES = [
 
 export type ImageQuality = (typeof IMAGE_QUALITIES)[number]["id"];
 
+export type AudioGenerationMode = "elevenlabs" | "user_upload";
+
+export const AUDIO_GENERATION_MODES: { value: AudioGenerationMode; label: string }[] = [
+  { value: "elevenlabs", label: "ElevenLabs" },
+  { value: "user_upload", label: "Áudio (upload próprio)" },
+];
+
 export const AUTOMATION_TOGGLES = [
   {
     key: "auto_transcribe",
@@ -94,12 +101,16 @@ export function toAutomationPayload(
   imageProvider: ImageProviderName = "higgsfield",
   sceneStyleId?: string,
   characterId?: string,
+  audio?: { reuseOriginalAudio?: boolean; audioGenerationMode?: AudioGenerationMode },
 ): Record<string, unknown> {
+  const reuse = Boolean(audio?.reuseOriginalAudio);
   return {
     ...flags,
     auto_media: flags.auto_media_gen,
     auto_publish: flags.auto_description,
     image_provider: imageProvider,
+    reuse_original_audio: reuse,
+    audio_generation_mode: reuse ? "elevenlabs" : (audio?.audioGenerationMode ?? "elevenlabs"),
     ...(characterId ? { character_id: characterId } : {}),
     ...(sceneStyleId ? { scene_style_id: sceneStyleId } : {}),
   };
@@ -112,4 +123,13 @@ export function imageProviderOf(config: Record<string, unknown> | undefined): Im
 export function configString(config: Record<string, unknown> | undefined, key: string): string | null {
   const value = config?.[key];
   return typeof value === "string" && value.trim() ? value : null;
+}
+
+export function configBool(config: Record<string, unknown> | undefined, key: string): boolean {
+  const value = config?.[key];
+  return value === true || value === 1 || value === "1" || value === "true" || value === "True";
+}
+
+export function audioGenerationModeOf(config: Record<string, unknown> | undefined): AudioGenerationMode {
+  return config?.audio_generation_mode === "user_upload" ? "user_upload" : "elevenlabs";
 }

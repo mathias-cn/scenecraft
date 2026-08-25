@@ -59,6 +59,20 @@ export function listImageModels(projectId: string) {
   return apiGet<ImageModelOption[]>(`/api/projects/${projectId}/image-models`);
 }
 
+export function generateProjectAudio(id: string, voiceId: string) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/audio/generate`, { voice_id: voiceId });
+}
+
+export function uploadProjectAudio(id: string, file: File) {
+  const form = new FormData();
+  form.append("file", file);
+  return apiPost<ProjectDetail>(`/api/projects/${id}/audio/upload`, form);
+}
+
+export function listAudioVoices(projectId: string) {
+  return apiGet<{ id: string; name: string }[]>(`/api/projects/${projectId}/audio/voices`);
+}
+
 export function patchMediaSettings(
   id: string,
   payload: { image_model?: string; image_quality?: string; scene_style?: string; scene_style_id?: string },

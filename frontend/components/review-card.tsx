@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { AudioStagePanel } from "@/components/audio-stage-panel";
 import { ImageModelPicker } from "@/components/image-model-picker";
 import { ReviewStageBody, reviewTitle } from "@/components/review-stage-body";
 import { StyleSelect } from "@/components/style-select";
@@ -45,6 +46,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
   );
   const isTranscript = project.current_stage === "transcript_review";
   const isSceneReview = project.current_stage === "scene_review";
+  const isAudioStage = project.current_stage === "audio_stage";
 
   async function onApprove() {
     setBusy(true);
@@ -86,7 +88,9 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           ? "Edite o original e a tradução se precisar. Ao aprovar, as alterações são salvas e o pipeline segue."
           : isSceneReview
             ? "Revise as cenas e escolha o modelo de imagem antes de gerar a mídia."
-            : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
+            : isAudioStage
+              ? "Defina o áudio final. Em seguida o Whisper realinha os tempos das cenas."
+              : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
       </p>
       {isTranscript ? (
         <TranscriptReview
@@ -94,6 +98,8 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           project={project}
           onUpdated={onUpdated}
         />
+      ) : isAudioStage ? (
+        <AudioStagePanel project={project} onUpdated={onUpdated} />
       ) : (
         <>
           <ReviewStageBody project={project} />
@@ -129,6 +135,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           {error ? (
             <p className="mt-4 font-mono text-xs text-red-300">{error}</p>
           ) : null}
+          {isAudioStage ? null : (
           <button
             type="button"
             disabled={busy || (isSceneReview && !imageModel)}
@@ -137,6 +144,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
           >
             {busy ? "Avançando…" : isSceneReview ? "Aprovar cenas e gerar mídia" : "Aprovar e continuar"}
           </button>
+          )}
         </>
       )}
     </section>

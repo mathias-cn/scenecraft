@@ -110,6 +110,8 @@ export function reviewTitle(stage: ProjectStage): string {
       return "Revisar cenas";
     case "media_review":
       return "Revisar mídia";
+    case "audio_stage":
+      return "Áudio do projeto";
     case "audio_review":
       return "Revisar áudio";
     case "render_review":

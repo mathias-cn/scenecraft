@@ -51,6 +51,7 @@ class SceneStatus(str, enum.Enum):
 class AudioTrackSource(str, enum.Enum):
     ORIGINAL = "original"
     GENERATED = "generated"
+    USER_UPLOAD = "user_upload"
 
 
 class AssemblyStatus(str, enum.Enum):

@@ -110,7 +110,7 @@ export type Scene = {
 
 export type AudioTrack = {
   id: string;
-  source: "original" | "generated";
+  source: "original" | "generated" | "user_upload";
   provider: string | null;
   file_url: string | null;
 };

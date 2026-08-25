@@ -41,6 +41,12 @@ def sanitize_filename(filename: str | None, source_type: SourceType) -> str:
     return name.replace("\\", "_").replace("/", "_")
 
 
+def assert_audio_upload_filename(filename: str) -> None:
+    suffix = Path(filename).suffix.lower()
+    if suffix not in AUDIO_SUFFIXES:
+        raise IngestError(f"arquivo de áudio inválido ({suffix or 'sem extensão'})")
+
+
 def assert_upload_filename(filename: str, source_type: SourceType) -> None:
     suffix = Path(filename).suffix.lower()
     if source_type is SourceType.UPLOAD_VIDEO and suffix not in VIDEO_SUFFIXES:
