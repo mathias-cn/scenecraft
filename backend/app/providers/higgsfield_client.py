@@ -15,6 +15,7 @@ from app.providers.image_provider import (
     ImageProviderError,
     ImageResult,
 )
+from app.providers.pricing import estimate_higgsfield_cost_usd
 
 BASE_URL = "https://platform.higgsfield.ai"
 _TERMINAL = frozenset({"completed", "failed", "nsfw", "canceled", "cancelled"})
@@ -93,7 +94,10 @@ class HiggsfieldClient(ImageProvider):
             if status not in {"completed", "complete", "success"}:
                 raise HiggsfieldError(payload.get("error") or f"geração Higgsfield terminou com status {status or '?'}")
             image_bytes = self._download_image(client, payload)
-            return ImageResult(image_bytes=image_bytes, cost_usd=_cost_from_payload(payload))
+            return ImageResult(
+                image_bytes=image_bytes,
+                cost_usd=float(estimate_higgsfield_cost_usd(payload, model)),
+            )
         finally:
             if owns:
                 client.close()
@@ -197,18 +201,6 @@ class HiggsfieldClient(ImageProvider):
         if response.status_code == 400 and ("nsfw" in lowered or "moderation" in lowered or "safety" in lowered):
             raise ContentModerationError(f"Higgsfield recusou o prompt por moderação: {message}")
         raise HiggsfieldError(f"Higgsfield HTTP {response.status_code}: {message}")
-
-
-def _cost_from_payload(payload: dict[str, Any]) -> float:
-    for key in ("cost_usd", "cost", "price_usd"):
-        value = payload.get(key)
-        if value is None:
-            continue
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            continue
-    return 0.0
 
 
 def generate_image(prompt: str, **kwargs: Any) -> ImageResult:

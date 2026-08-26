@@ -1,4 +1,5 @@
 from contextlib import nullcontext
+from decimal import Decimal
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -102,6 +103,22 @@ def test_generate_description_saves_text_tags_and_source(monkeypatch):
     assert row.tags == result["tags"]
     assert len(row.tags) == 12
     assert row.source is DescriptionSource.GENERATED
+    assert row.cost_usd is None
+
+
+def test_generate_description_persists_llm_cost(monkeypatch):
+    project = _project()
+    monkeypatch.setattr(
+        "app.core.generate_description.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    monkeypatch.setattr("app.core.generate_description.advance_stage", _stub_advance(project))
+    generate_description(
+        project.id,
+        db=FakeDB(project),
+        write_copy=lambda **kwargs: {**_copy(), "cost_usd": 0.0025},
+    )
+    assert project.descriptions[0].cost_usd == Decimal("0.002500")
 
 
 def test_generate_description_does_not_advance_when_paused(monkeypatch):

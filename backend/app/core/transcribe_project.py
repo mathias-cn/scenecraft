@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete
@@ -15,6 +16,7 @@ from app.core.state_machine import ProjectNotFound, advance_stage
 from app.models.project import Project
 from app.models.transcript_segment import TranscriptSegment
 from app.providers import llm_client, transcription_client
+from app.providers.pricing import add_project_llm_cost
 from app.providers.transcription_client import Segment, TranscriptionError
 
 _LANG_ALIASES = {
@@ -62,8 +64,9 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
 
         detected = _whisper_language(segments)
         language = (detected or project.target_language or "und")[:16]
-        translations = _translate_if_needed(segments, detected, project.target_language)
+        translations, translation_cost = _translate_if_needed(segments, detected, project.target_language)
         _replace_segments(session, project, segments, language, translations)
+        add_project_llm_cost(project, translation_cost)
         session.flush()
         advance_stage(project.id, "TRANSCRIBING", db=session)
         return {
@@ -91,9 +94,9 @@ def _translate_if_needed(
     segments: list[Segment],
     detected: str,
     target_language: str,
-) -> dict[int, str]:
+) -> tuple[dict[int, str], Any]:
     if not needs_translation(detected, target_language):
-        return {}
+        return {}, 0
     payload = [
         {
             "index": index,
@@ -104,7 +107,7 @@ def _translate_if_needed(
         for index, segment in enumerate(segments)
     ]
     rows = llm_client.translate_segments(payload, target_language=target_language)
-    return {int(row["index"]): str(row["text_translated"]) for row in rows}
+    return {int(row["index"]): str(row["text_translated"]) for row in rows}, getattr(rows, "cost_usd", 0)
 
 
 def _replace_segments(

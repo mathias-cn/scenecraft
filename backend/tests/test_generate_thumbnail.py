@@ -141,6 +141,8 @@ def test_generate_thumbnail_uses_openai_from_config(monkeypatch):
     thumb = project.thumbnails[0]
     assert thumb.source is ThumbnailSource.GENERATED
     assert thumb.file_url == result["file_url"]
+    assert thumb.cost_usd is not None
+    assert float(thumb.cost_usd) == 0.041
 
 
 def test_generate_thumbnail_uses_higgsfield_provider(monkeypatch):

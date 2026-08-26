@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import String, Text, text
+from sqlalchemy import Numeric, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +45,7 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=ProjectStatus.PENDING,
     )
+    llm_cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
     transcript_segments: Mapped[list[TranscriptSegment]] = relationship(
         back_populates="project", cascade="all, delete-orphan"

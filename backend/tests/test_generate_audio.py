@@ -104,6 +104,9 @@ def test_generate_audio_uploads_track_and_timestamps(monkeypatch):
     assert db.added[0].voice_id == "Rachel"
     assert db.added[0].source is AudioTrackSource.GENERATED
     assert db.added[0].word_timestamps == stamps
+    assert db.added[0].cost_usd is not None
+    assert db.added[0].cost_usd > 0
+    assert result["cost_usd"] == float(db.added[0].cost_usd)
     assert uploaded[0][2] == "narration.mp3"
     assert project.video_assemblies[0].render_config["audio_source"] == "generated"
 

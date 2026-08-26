@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import String, Text
+from sqlalchemy import Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,5 +28,6 @@ class AudioTrack(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
     word_timestamps: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB, nullable=True
     )
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="audio_tracks")

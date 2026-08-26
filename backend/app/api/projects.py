@@ -14,6 +14,7 @@ from app.core.export_project import export_project
 from app.core.generate_description import DescriptionError, confirm_description, enqueue_description_generate
 from app.core.generate_scene_media import enqueue_scene_regenerate
 from app.core.generate_thumbnail import enqueue_thumbnail_generate, persist_uploaded_thumbnail
+from app.core.project_cost import project_cost_breakdown
 from app.core.render_video import enqueue_render_regenerate
 from app.core.ingest import (
     IngestError,
@@ -50,6 +51,7 @@ from app.schemas.project import (
     AudioGenerateRequest,
     DescriptionConfirmRequest,
     ProjectCreate,
+    ProjectCostRead,
     ProjectDetail,
     ProjectExportRead,
     ProjectRead,
@@ -525,6 +527,14 @@ def export_project_pack(project_id: UUID, db: DbDep) -> ProjectExportRead:
     except StorageError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     return ProjectExportRead.model_validate(payload)
+
+
+@router.get("/{project_id}/cost")
+def get_project_cost(project_id: UUID, db: DbDep) -> ProjectCostRead:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectCostRead.model_validate(project_cost_breakdown(project))
 
 
 @router.get("/{project_id}")

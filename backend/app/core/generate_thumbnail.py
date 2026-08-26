@@ -22,6 +22,7 @@ from app.providers.image_provider import (
     parse_image_provider,
 )
 from app.providers.llm_client import summarize_video, thumbnail_prompt
+from app.providers.pricing import add_usd, as_usd, unpack_priced_text
 
 THUMBNAIL_SIZE = "1280x720"
 OPENAI_THUMBNAIL_SIZE = "1536x1024"
@@ -85,16 +86,20 @@ def generate_thumbnail(
 
         make_summary = summarize or summarize_video
         make_prompt = prompt_from_summary or thumbnail_prompt
-        summary = make_summary(
-            title=project.title,
-            transcript=transcript,
-            language=getattr(project, "target_language", None) or "pt-BR",
+        summary, summary_cost = unpack_priced_text(
+            make_summary(
+                title=project.title,
+                transcript=transcript,
+                language=getattr(project, "target_language", None) or "pt-BR",
+            )
         )
-        prompt = make_prompt(
-            summary=summary,
-            title=project.title,
-            character_description=character_description,
-            style_name=style_name,
+        prompt, prompt_cost = unpack_priced_text(
+            make_prompt(
+                summary=summary,
+                title=project.title,
+                character_description=character_description,
+                style_name=style_name,
+            )
         )
         prompt = enrich_visual_prompt(prompt, character=character, style=style)
         if not prompt:
@@ -109,6 +114,7 @@ def generate_thumbnail(
             result = client.generate_image(prompt, **generate_kwargs)
         if not result.image_bytes:
             raise ThumbnailError("ImageProvider devolveu imagem vazia")
+        cost = add_usd(summary_cost, prompt_cost, result.cost_usd)
 
         if upload is None:
             from app.storage import upload_fileobj as upload
@@ -123,6 +129,7 @@ def generate_thumbnail(
             project_id=project.id,
             source=ThumbnailSource.GENERATED,
             file_url=url,
+            cost_usd=as_usd(cost),
         )
         session.add(thumb)
         thumbs = getattr(project, "thumbnails", None)
@@ -142,7 +149,7 @@ def generate_thumbnail(
             "size": size,
             "summary": summary,
             "prompt": prompt,
-            "cost_usd": float(result.cost_usd),
+            "cost_usd": float(cost),
             "advanced": advanced,
         }
     except Exception:

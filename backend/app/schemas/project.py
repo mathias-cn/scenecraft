@@ -243,6 +243,7 @@ class AudioTrackRead(BaseModel):
     voice_id: str | None = None
     file_url: str | None = None
     word_timestamps: dict[str, Any] | list[Any] | None = None
+    cost_usd: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -291,6 +292,7 @@ class ThumbnailRead(BaseModel):
     project_id: uuid.UUID
     source: str
     file_url: str
+    cost_usd: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -301,6 +303,7 @@ class DescriptionRead(BaseModel):
     text: str
     tags: list[str] = Field(default_factory=list)
     source: str
+    cost_usd: Decimal | None = None
 
     model_config = {"from_attributes": True}
 
@@ -320,3 +323,13 @@ class ProjectDetail(ProjectRead):
         self.transcript_segments = sorted(self.transcript_segments, key=lambda seg: seg.index)
         self.jobs = sorted(self.jobs, key=lambda job: job.created_at, reverse=True)
         return self
+
+
+class ProjectCostRead(BaseModel):
+    project_id: uuid.UUID
+    total_usd: Decimal
+    scenes_usd: Decimal
+    audio_tracks_usd: Decimal
+    descriptions_usd: Decimal
+    thumbnails_usd: Decimal
+    llm_usd: Decimal

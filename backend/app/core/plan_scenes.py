@@ -20,6 +20,7 @@ from app.models.enums import MediaType, SceneStatus
 from app.models.project import Project
 from app.models.scene import Scene
 from app.providers.llm_client import plan_scenes
+from app.providers.pricing import add_project_llm_cost
 
 SCENE_PACING_MS: dict[str, tuple[int, int]] = {
     "short": (8_000, 15_000),
@@ -231,6 +232,7 @@ def plan_project_scenes(project_id: str | UUID, db: Session | None = None) -> di
             min_duration_ms=min_ms,
             max_duration_ms=max_ms,
         )
+        add_project_llm_cost(project, getattr(grouped, "cost_usd", 0))
         planned = scenes_from_groups(
             grouped,
             ordered,

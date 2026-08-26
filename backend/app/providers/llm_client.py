@@ -14,6 +14,14 @@ from abc import ABC, abstractmethod
 from typing import Any, Mapping, Sequence
 
 from app.providers.openai_auth import OpenAIKeyError, openai_client
+from app.providers.pricing import (
+    PricedSequence,
+    PricedText,
+    as_usd,
+    estimate_llm_cost_from_text,
+    estimate_llm_cost_usd,
+    usage_tokens,
+)
 
 CHAT_MODEL = "gpt-4o-mini"
 TRANSLATE_BATCH_SIZE = 20
@@ -111,6 +119,14 @@ def _parse_json_object(content: str | None) -> dict:
     return parsed
 
 
+class _PricedDict(dict):
+    """Objeto JSON da completion com `.cost_usd` estimado (uso da API ou fallback)."""
+
+    def __init__(self, data: dict, cost_usd: Any) -> None:
+        super().__init__(data)
+        self.cost_usd = as_usd(cost_usd)
+
+
 class OpenAILLMProvider(LLMProvider):
     def __init__(self, client: Any | None = None) -> None:
         self._client = client
@@ -130,15 +146,43 @@ class OpenAILLMProvider(LLMProvider):
         *,
         model: str | None = None,
     ) -> dict:
+        chosen = (model or CHAT_MODEL).strip() or CHAT_MODEL
         response = self._client_or_default().chat.completions.create(
-            model=(model or CHAT_MODEL).strip() or CHAT_MODEL,
+            model=chosen,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
             response_format={"type": "json_object"},
         )
-        return _parse_json_object(response.choices[0].message.content)
+        data = _parse_json_object(response.choices[0].message.content)
+        prompt_tokens, completion_tokens = usage_tokens(getattr(response, "usage", None))
+        if prompt_tokens or completion_tokens:
+            cost = estimate_llm_cost_usd(
+                chosen, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+            )
+        else:
+            cost = estimate_llm_cost_from_text(chosen, system_prompt, user_content, data)
+        return _PricedDict(data, cost)
+
+
+def priced_completion(
+    system_prompt: str,
+    user_content: str,
+    *,
+    model: str | None = None,
+) -> tuple[dict, Any]:
+    """Completion JSON + custo estimado. Mocks que devolvem dict puro usam fallback por caracteres."""
+    data = (
+        structured_completion(system_prompt, user_content, model=model)
+        if model is not None
+        else structured_completion(system_prompt, user_content)
+    )
+    extra = getattr(data, "cost_usd", None)
+    if extra is not None:
+        return data, as_usd(extra)
+    chosen = (model or CHAT_MODEL).strip() or CHAT_MODEL
+    return data, estimate_llm_cost_from_text(chosen, system_prompt, user_content, data)
 
 
 _provider: LLMProvider = OpenAILLMProvider()
@@ -230,7 +274,7 @@ def plan_scenes(
         }
     if style_name:
         payload["visual_style"] = style_name
-    result = structured_completion(PLAN_SCENES_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    result, cost = priced_completion(PLAN_SCENES_SYSTEM, json.dumps(payload, ensure_ascii=False))
     scenes = result.get("scenes")
     if not isinstance(scenes, list) or not scenes:
         raise LLMJSONError("JSON de scene planning deve conter a lista 'scenes'")
@@ -254,7 +298,7 @@ def plan_scenes(
                 "visual_prompt": prompt,
             }
         )
-    return normalized
+    return PricedSequence(normalized, cost)
 
 
 def translate_segments(
@@ -269,23 +313,24 @@ def translate_segments(
     """
     originals = [_segment_payload(segment, index) for index, segment in enumerate(segments)]
     if not originals:
-        return []
+        return PricedSequence([], 0)
     size = max(1, int(batch_size))
     translated: list[dict[str, Any]] = []
+    total_cost = as_usd(0)
     for start in range(0, len(originals), size):
-        translated.extend(
-            _translate_batch(originals[start : start + size], target_language=target_language)
-        )
-    return translated
+        rows, cost = _translate_batch(originals[start : start + size], target_language=target_language)
+        translated.extend(rows)
+        total_cost = as_usd(total_cost + cost)
+    return PricedSequence(translated, total_cost)
 
 
 def _translate_batch(
     originals: list[dict[str, Any]],
     *,
     target_language: str,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], Any]:
     payload = {"target_language": target_language, "segments": originals}
-    result = structured_completion(TRANSLATE_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    result, cost = priced_completion(TRANSLATE_SYSTEM, json.dumps(payload, ensure_ascii=False))
     rows = result.get("segments")
     if not isinstance(rows, list):
         raise LLMJSONError("JSON de tradução deve conter a lista 'segments'")
@@ -308,7 +353,7 @@ def _translate_batch(
                 "text_translated": text,
             }
         )
-    return translated
+    return translated, cost
 
 
 def generate_description(
@@ -322,7 +367,7 @@ def generate_description(
     if not text:
         raise LLMError("transcript vazio para gerar descrição")
     payload = {"title": title, "language": language, "transcript": text}
-    result = structured_completion(DESCRIPTION_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    result, cost = priced_completion(DESCRIPTION_SYSTEM, json.dumps(payload, ensure_ascii=False))
     body = str(result.get("text") or result.get("description") or "").strip()
     if not body:
         raise LLMJSONError("JSON de descrição deve conter 'text'")
@@ -330,6 +375,7 @@ def generate_description(
         "text": body,
         "tags": normalize_youtube_tags(result.get("tags")),
         "title": str(result.get("title") or title).strip() or title,
+        "cost_usd": float(cost),
     }
 
 
@@ -373,17 +419,17 @@ def summarize_video(
     title: str,
     transcript: str,
     language: str = "pt-BR",
-) -> str:
+) -> PricedText:
     """Resume o vídeo a partir do transcript completo."""
     text = (transcript or "").strip()
     if not text:
         raise LLMError("transcript vazio para resumir")
     payload = {"title": title, "language": language, "transcript": text}
-    result = structured_completion(SUMMARY_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    result, cost = priced_completion(SUMMARY_SYSTEM, json.dumps(payload, ensure_ascii=False))
     summary = str(result.get("summary") or result.get("text") or "").strip()
     if not summary:
         raise LLMJSONError("JSON de resumo deve conter 'summary'")
-    return summary
+    return PricedText(summary, cost)
 
 
 def thumbnail_prompt(
@@ -392,7 +438,7 @@ def thumbnail_prompt(
     title: str,
     character_description: str | None = None,
     style_name: str | None = None,
-) -> str:
+) -> PricedText:
     """Monta um prompt de thumbnail chamativa a partir do resumo do vídeo."""
     text = (summary or "").strip()
     if not text:
@@ -406,11 +452,11 @@ def thumbnail_prompt(
         payload["character"] = character_description
     if style_name:
         payload["visual_style"] = style_name
-    result = structured_completion(THUMBNAIL_PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    result, cost = priced_completion(THUMBNAIL_PROMPT_SYSTEM, json.dumps(payload, ensure_ascii=False))
     prompt = str(result.get("prompt") or result.get("visual_prompt") or "").strip()
     if not prompt:
         raise LLMJSONError("JSON de thumbnail deve conter 'prompt'")
-    return prompt
+    return PricedText(prompt, cost)
 
 
 def title_model() -> str:
@@ -426,7 +472,7 @@ def generate_titles(draft_title: str) -> list[str]:
     if not draft:
         raise LLMError("draft_title vazio")
     payload = {"draft_title": draft, "count": 3}
-    result = structured_completion(
+    result, _cost = priced_completion(
         TITLE_SYSTEM,
         json.dumps(payload, ensure_ascii=False),
         model=title_model(),

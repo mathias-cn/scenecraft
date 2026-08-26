@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
@@ -21,17 +22,21 @@ from app.providers.openai_auth import openai_client as shared_openai_client
 
 
 class FakeCompletions:
-    def __init__(self, content, recorder):
+    def __init__(self, content, recorder, usage=None):
         self._content = content
         self._recorder = recorder
+        self._usage = usage
 
     def create(self, **kwargs):
         self._recorder.append(kwargs)
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=self._content))])
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=self._content))],
+            usage=self._usage,
+        )
 
 
-def _client(content, recorder):
-    return SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions(content, recorder)))
+def _client(content, recorder, usage=None):
+    return SimpleNamespace(chat=SimpleNamespace(completions=FakeCompletions(content, recorder, usage=usage)))
 
 
 @pytest.fixture(autouse=True)
@@ -47,11 +52,20 @@ def test_structured_completion_parses_json_object():
     result = structured_completion("Você é um planejador. Responda em JSON.", "liste as cenas")
     assert result == {"scenes": [1], "title": "x"}
     assert recorder[0]["model"] == "gpt-4o-mini"
+    assert getattr(result, "cost_usd") > 0
     assert recorder[0]["response_format"] == {"type": "json_object"}
     assert recorder[0]["messages"] == [
         {"role": "system", "content": "Você é um planejador. Responda em JSON."},
         {"role": "user", "content": "liste as cenas"},
     ]
+
+
+def test_structured_completion_uses_usage_tokens_for_cost():
+    recorder: list[dict] = []
+    usage = SimpleNamespace(prompt_tokens=1_000_000, completion_tokens=0)
+    set_llm_provider(OpenAILLMProvider(client=_client('{"ok": true}', recorder, usage=usage)))
+    result = structured_completion("sys", "user", model="gpt-4o-mini")
+    assert result.cost_usd == Decimal("0.150000")
 
 
 def test_structured_completion_invalid_json_raises():
@@ -209,6 +223,7 @@ def test_generate_description_from_transcript(monkeypatch):
     assert result["text"] == "Um vídeo sobre o mar. Inscreva-se."
     assert result["tags"] == tags
     assert result["title"] == "O Mar"
+    assert result["cost_usd"] > 0
 
 
 def test_generate_description_strips_hashtags_and_requires_ten_tags(monkeypatch):
@@ -310,7 +325,8 @@ def test_summarize_video_returns_summary(monkeypatch):
 
     monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
     summary = summarize_video(title="Forest", transcript="we walked into the woods", language="pt-BR")
-    assert "floresta" in summary.lower()
+    assert "floresta" in summary.text.lower()
+    assert summary.cost_usd > 0
     assert "transcript" in captured[0][1]
     assert "SUMMARY" in captured[0][0] or "resume" in captured[0][0].lower()
 
@@ -338,6 +354,7 @@ def test_thumbnail_prompt_uses_summary(monkeypatch):
         character_description="red-coated heroine",
         style_name="cinematic",
     )
-    assert "hiker" in prompt
+    assert "hiker" in prompt.text
+    assert prompt.cost_usd > 0
     assert "misty forest" in captured[0]
     assert "red-coated heroine" in captured[0]

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Text, text as sql_text
+from sqlalchemy import Numeric, Text, text as sql_text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,5 +29,6 @@ class Description(UUIDPrimaryKeyMixin, ProjectFKMixin, TimestampMixin, Base):
     source: Mapped[DescriptionSource] = mapped_column(
         pg_enum(DescriptionSource, "description_source"), nullable=False
     )
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
     project: Mapped[Project] = relationship(back_populates="descriptions")

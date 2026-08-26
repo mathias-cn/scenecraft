@@ -15,6 +15,7 @@ from app.models.audio_track import AudioTrack
 from app.models.enums import AudioTrackSource
 from app.models.project import Project
 from app.providers.elevenlabs_client import generate_speech
+from app.providers.pricing import as_usd, estimate_elevenlabs_cost_usd
 
 
 def narration_script(project: Project) -> str:
@@ -63,6 +64,7 @@ def generate_audio(
             audio_bytes, word_timestamps = tts(script, voice)
         if not audio_bytes:
             raise ProjectAudioError("ElevenLabs devolveu áudio vazio")
+        cost = estimate_elevenlabs_cost_usd(script)
 
         if upload is None:
             from app.storage import upload_fileobj as upload
@@ -80,6 +82,7 @@ def generate_audio(
             voice_id=voice,
             file_url=url,
             word_timestamps=list(word_timestamps or []),
+            cost_usd=as_usd(cost),
         )
         session.add(track)
         tracks = getattr(project, "audio_tracks", None)
@@ -95,6 +98,7 @@ def generate_audio(
             "voice_id": voice,
             "source": AudioTrackSource.GENERATED.value,
             "word_timestamps": list(word_timestamps or []),
+            "cost_usd": float(cost),
         }
     except Exception:
         if owns:

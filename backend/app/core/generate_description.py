@@ -18,6 +18,7 @@ from app.providers.llm_client import (
     generate_description as llm_generate_description,
     sanitize_youtube_tags,
 )
+from app.providers.pricing import as_usd
 
 
 class DescriptionError(RuntimeError):
@@ -56,12 +57,15 @@ def generate_description(
             raise DescriptionError("LLM devolveu descrição vazia")
         if len(tags) < MIN_YOUTUBE_TAGS:
             raise DescriptionError("LLM devolveu menos de 10 tags")
+        raw_cost = payload.get("cost_usd")
+        cost = as_usd(raw_cost) if raw_cost is not None else None
 
         row = Description(
             project_id=project.id,
             text=text,
             tags=tags,
             source=DescriptionSource.GENERATED,
+            cost_usd=cost,
         )
         session.add(row)
         rows = getattr(project, "descriptions", None)
@@ -78,6 +82,7 @@ def generate_description(
             "tags": tags,
             "source": DescriptionSource.GENERATED.value,
             "advanced": advanced,
+            "cost_usd": float(cost) if cost is not None else None,
         }
     except Exception:
         if owns:
