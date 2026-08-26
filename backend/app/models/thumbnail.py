@@ -8,14 +8,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.enums import ThumbnailSource
-from app.models.mixins import ProjectFKMixin, UUIDPrimaryKeyMixin
+from app.models.mixins import ProjectFKMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.pg import pg_enum
 
 if TYPE_CHECKING:
     from app.models.project import Project
 
 
-class Thumbnail(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
+class Thumbnail(UUIDPrimaryKeyMixin, ProjectFKMixin, TimestampMixin, Base):
     __tablename__ = "thumbnails"
 
     source: Mapped[ThumbnailSource] = mapped_column(

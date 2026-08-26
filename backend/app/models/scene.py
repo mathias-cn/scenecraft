@@ -9,14 +9,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
 from app.models.enums import MediaType, SceneStatus
-from app.models.mixins import ProjectFKMixin, UUIDPrimaryKeyMixin
+from app.models.mixins import ProjectFKMixin, TimestampMixin, UUIDPrimaryKeyMixin
 from app.models.pg import pg_enum
 
 if TYPE_CHECKING:
     from app.models.project import Project
 
 
-class Scene(UUIDPrimaryKeyMixin, ProjectFKMixin, Base):
+class Scene(UUIDPrimaryKeyMixin, ProjectFKMixin, TimestampMixin, Base):
     __tablename__ = "scenes"
     __table_args__ = (UniqueConstraint("project_id", "index", name="uq_scenes_project_index"),)
 

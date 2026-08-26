@@ -187,3 +187,15 @@ export type ProjectExport = {
   thumbnails: { file_url: string | null };
   descriptions: { text: string; tags: string[] };
 };
+
+export type CostPeriod = {
+  period: string;
+  total_usd: string | number;
+};
+
+export type CostSeries = {
+  timezone: string;
+  total_usd: string | number;
+  daily: CostPeriod[];
+  monthly: CostPeriod[];
+};

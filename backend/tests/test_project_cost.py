@@ -68,3 +68,65 @@ def test_project_cost_breakdown_sums_all_buckets():
     assert payload["thumbnails_usd"] == Decimal("0.041000")
     assert payload["llm_usd"] == Decimal("0.010000")
     assert payload["total_usd"] == add_usd("0.041", "0.003", "0.002", "0.041", "0.010")
+
+
+def test_build_cost_series_pads_daily_and_monthly_windows():
+    from datetime import date, datetime, timedelta, timezone
+
+    from app.core.project_cost import DAILY_WINDOW_DAYS, MONTHLY_WINDOW_MONTHS, build_cost_series
+
+    now = datetime(2026, 8, 25, 21, 0, tzinfo=timezone(timedelta(hours=-3)))
+    series = build_cost_series(
+        [
+            (date(2026, 8, 25), Decimal("0.10")),
+            (date(2026, 7, 1), Decimal("1.00")),
+        ],
+        now=now,
+    )
+    assert series["timezone"] == "America/Sao_Paulo"
+    assert series["total_usd"] == Decimal("1.100000")
+    assert len(series["daily"]) == DAILY_WINDOW_DAYS
+    assert series["daily"][-1]["period"] == "2026-08-25"
+    assert series["daily"][-1]["total_usd"] == Decimal("0.100000")
+    assert series["daily"][0]["period"] == "2026-07-27"
+    assert series["daily"][0]["total_usd"] == Decimal("0")
+    assert len(series["monthly"]) == MONTHLY_WINDOW_MONTHS
+    assert series["monthly"][-1]["period"] == "2026-08"
+    assert series["monthly"][-1]["total_usd"] == Decimal("0.100000")
+    assert series["monthly"][-2]["period"] == "2026-07"
+    assert series["monthly"][-2]["total_usd"] == Decimal("1.000000")
+
+
+def test_daily_cost_sql_unions_tables_and_groups_by_day():
+    from sqlalchemy.dialects import postgresql
+
+    from app.core.project_cost import daily_cost_totals_stmt
+
+    sql = str(daily_cost_totals_stmt().compile(dialect=postgresql.dialect())).lower()
+    assert "union all" in sql
+    assert "date_trunc" in sql
+    assert "group by" in sql
+    assert "scenes" in sql
+    assert "audio_tracks" in sql
+    assert "descriptions" in sql
+    assert "thumbnails" in sql
+    assert "llm_cost_usd" in sql
+
+
+def test_load_cost_series_uses_grouped_query_rows():
+    from datetime import datetime, timedelta, timezone
+
+    from app.core.project_cost import load_cost_series
+
+    class FakeResult:
+        def all(self):
+            return [SimpleNamespace(period=datetime(2026, 8, 25), total_usd=Decimal("0.5"))]
+
+    class FakeDB:
+        def execute(self, _stmt):
+            return FakeResult()
+
+    now = datetime(2026, 8, 25, tzinfo=timezone(timedelta(hours=-3)))
+    series = load_cost_series(FakeDB(), now=now)
+    assert series["daily"][-1]["total_usd"] == Decimal("0.500000")
+    assert series["total_usd"] == Decimal("0.500000")

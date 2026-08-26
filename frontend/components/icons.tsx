@@ -83,3 +83,14 @@ export function IconClose({ className }: IconProps) {
     </svg>
   );
 }
+
+export function IconCosts({ className }: IconProps) {
+  return (
+    <svg className={className} viewBox="0 0 20 20" fill="none" aria-hidden>
+      <path d="M3.5 16.5V8.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M8 16.5V5.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M12.5 16.5v-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M17 16.5V3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}

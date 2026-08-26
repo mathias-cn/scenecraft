@@ -325,6 +325,18 @@ class ProjectDetail(ProjectRead):
         return self
 
 
+class CostPeriodRead(BaseModel):
+    period: str
+    total_usd: Decimal
+
+
+class CostSeriesRead(BaseModel):
+    timezone: str
+    total_usd: Decimal
+    daily: list[CostPeriodRead]
+    monthly: list[CostPeriodRead]
+
+
 class ProjectCostRead(BaseModel):
     project_id: uuid.UUID
     total_usd: Decimal

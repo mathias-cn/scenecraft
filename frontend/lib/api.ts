@@ -8,6 +8,7 @@ import type {
   ProjectCreate,
   ProjectDetail,
   ProjectExport,
+  CostSeries,
   Style,
   TranscriptSegmentPatch,
 } from "./types";
@@ -110,6 +111,10 @@ export function exportProject(id: string) {
 
 export function completeProject(id: string) {
   return apiPost<ProjectDetail>(`/api/projects/${id}/complete`);
+}
+
+export function getCostSeries() {
+  return apiGet<CostSeries>("/api/costs");
 }
 
 export function listStyles(active?: boolean) {
