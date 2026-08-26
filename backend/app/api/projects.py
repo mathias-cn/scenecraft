@@ -238,7 +238,7 @@ def advance_project(
         result = advance_stage(project_id, from_stage, db=db)
     except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
-    return AdvanceRead.model_validate(result)
+    return AdvanceRead.model_validate(result, from_attributes=True)
 
 
 @router.post("/{project_id}/retry-stage")
@@ -247,7 +247,7 @@ def retry_project_stage(project_id: UUID, db: DbDep) -> AdvanceRead:
         result = retry_stage(project_id, db=db)
     except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
-    return AdvanceRead.model_validate(result)
+    return AdvanceRead.model_validate(result, from_attributes=True)
 
 
 @router.patch("/{project_id}/transcript")

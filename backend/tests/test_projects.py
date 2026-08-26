@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 import pytest
 from pydantic import ValidationError
 
@@ -10,8 +12,8 @@ from app.core.ingest import (
     assert_image_upload_filename,
     sanitize_image_filename,
 )
-from app.models.enums import SourceType
-from app.schemas.project import ProjectCreate, ProjectDetail, ProjectRead
+from app.models.enums import ProjectStage, ProjectStatus, SourceType
+from app.schemas.project import AdvanceRead, ProjectCreate, ProjectDetail, ProjectRead
 
 
 def test_youtube_requires_source_ref():
@@ -204,3 +206,95 @@ def test_project_create_blank_cast_ids_become_none():
     )
     assert payload.character_id is None
     assert payload.scene_style_id is None
+
+
+def _advance_result(**overrides):
+    from app.core.state_machine import AdvanceResult
+
+    payload = dict(
+        project_id=uuid4(),
+        from_stage=ProjectStage.GENERATING_MEDIA,
+        to_stage=ProjectStage.GENERATING_MEDIA,
+        status=ProjectStatus.RUNNING,
+        paused_for_review=False,
+        dispatched_job_id=uuid4(),
+        auto_advanced=False,
+        paused_for_cost_limit=False,
+    )
+    payload.update(overrides)
+    return AdvanceResult(**payload)
+
+
+def test_advance_read_accepts_advance_result_dataclass():
+    result = _advance_result()
+    payload = AdvanceRead.model_validate(result)
+    assert payload.project_id == result.project_id
+    assert payload.to_stage is ProjectStage.GENERATING_MEDIA
+    assert payload.status is ProjectStatus.RUNNING
+    assert payload.dispatched_job_id == result.dispatched_job_id
+    assert payload.paused_for_review is False
+
+
+def test_retry_stage_endpoint_returns_200_for_failed_project(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.core.auth import CurrentUser, get_current_user
+    from app.db import get_db
+    from app.main import app
+
+    result = _advance_result()
+    monkeypatch.setattr("app.api.projects.retry_stage", lambda *_a, **_k: result)
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        email="owner@example.com",
+        subject="owner",
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(f"/api/projects/{result.project_id}/retry-stage")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["project_id"] == str(result.project_id)
+    assert body["from_stage"] == ProjectStage.GENERATING_MEDIA.value
+    assert body["to_stage"] == ProjectStage.GENERATING_MEDIA.value
+    assert body["status"] == ProjectStatus.RUNNING.value
+    assert body["paused_for_review"] is False
+    assert body["dispatched_job_id"] == str(result.dispatched_job_id)
+    assert body["auto_advanced"] is False
+    assert body["paused_for_cost_limit"] is False
+
+
+def test_advance_endpoint_returns_200_from_advance_result(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.core.auth import CurrentUser, get_current_user
+    from app.db import get_db
+    from app.main import app
+
+    result = _advance_result(
+        from_stage=ProjectStage.TRANSCRIPT_REVIEW,
+        to_stage=ProjectStage.SCENE_PLANNING,
+        status=ProjectStatus.RUNNING,
+    )
+    monkeypatch.setattr("app.api.projects.advance_stage", lambda *_a, **_k: result)
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        email="owner@example.com",
+        subject="owner",
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/projects/{result.project_id}/advance",
+                json={"from_stage": ProjectStage.TRANSCRIPT_REVIEW.value},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["to_stage"] == ProjectStage.SCENE_PLANNING.value
+    assert body["status"] == ProjectStatus.RUNNING.value

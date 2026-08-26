@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from app.models.enums import (
     AssemblyStatus,
@@ -204,6 +204,8 @@ class AdvanceRequest(BaseModel):
 
 
 class AdvanceRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     project_id: uuid.UUID
     from_stage: ProjectStage
     to_stage: ProjectStage
