@@ -90,6 +90,12 @@ Preencha as URIs do Supabase e as chaves. Em produção **não** use `localhost`
 | `REDIS_URL` | Deixe `redis://redis:6379/0` (hostname do serviço Compose) |
 | `CORS_ORIGINS` | `https://scenecraft.mazting.studio` (várias origens: separado por vírgula) |
 | `NEXT_PUBLIC_API_URL` | `https://api.mazting.studio` |
+| `BETTER_AUTH_SECRET` | Secret do Better Auth (`openssl rand -base64 32`) |
+| `BETTER_AUTH_URL` | `https://scenecraft.mazting.studio` |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Cliente OAuth 2.0 no Google Cloud Console |
+| `OWNER_EMAIL` | Único email autorizado a entrar |
+
+No Google Cloud Console, a redirect URI autorizada deve ser `https://scenecraft.mazting.studio/api/auth/callback/google`.
 
 `NEXT_PUBLIC_API_URL` entra no **build** da imagem do frontend. Se mudar o domínio depois, reconstrua o serviço `frontend`.
 

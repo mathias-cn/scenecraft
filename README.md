@@ -41,6 +41,21 @@ Antes de subir a API, o worker ou o Compose, você precisa de:
 1. Um **projeto Supabase** com Postgres (o SceneCraft **não** sobe Postgres local).
 2. Docker Desktop (ou Docker Engine + Compose v2), se for usar o `docker compose`.
 3. Um `.env` na raiz com `DATABASE_URL` e `DATABASE_URL_MIGRATIONS` apontando para esse projeto.
+4. Credenciais OAuth do Google e `OWNER_EMAIL` (veja [Autenticação](#autenticação)).
+
+## Autenticação
+
+O SceneCraft é um sistema pessoal: o login com Google (Better Auth) **só aceita um email**, o do dono, definido em `OWNER_EMAIL`. Qualquer outra conta Google é recusada no frontend e na API. Use o mesmo valor no frontend e no backend.
+
+No [Google Cloud Console](https://console.cloud.google.com/) (APIs e serviços → Credenciais → cliente OAuth 2.0), autorize a redirect URI:
+
+```
+https://scenecraft.mazting.studio/api/auth/callback/google
+```
+
+Em desenvolvimento local, autorize também `http://localhost:3000/api/auth/callback/google`.
+
+Variáveis no `.env` da raiz (veja `.env.example`): `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `OWNER_EMAIL`. Gere o secret com `openssl rand -base64 32`. Em produção, `BETTER_AUTH_URL` deve ser `https://scenecraft.mazting.studio`.
 
 ## Banco de dados (Supabase)
 
@@ -149,6 +164,10 @@ Veja `.env.example`. As principais:
 | `OPENAI_API_KEY` | Whisper, LLM e imagens |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | S3 ou R2 |
 | `R2_ACCOUNT_ID` | Conta Cloudflare R2 |
+| `BETTER_AUTH_SECRET` | Secret do Better Auth (`openssl rand -base64 32`) |
+| `BETTER_AUTH_URL` | URL pública do frontend (prod: `https://scenecraft.mazting.studio`) |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Cliente OAuth 2.0 no Google Cloud Console |
+| `OWNER_EMAIL` | Único email autorizado a entrar |
 
 Se `S3_ENDPOINT_URL` estiver vazio, o storage usa AWS S3. Para R2, use `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`.
 
