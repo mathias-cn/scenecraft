@@ -1,18 +1,18 @@
 ---
-description: Após cada tarefa, sugerir commit, push, merge na main e exclusão da branch.
+description: Após cada tarefa, sugerir commit, push e merge na main.
 alwaysApply: true
 ---
 
-# Sugerir commit, push, merge e exclusão
+# Sugerir commit, push e merge
 
-Ao concluir qualquer feature, correção, refatoração ou ação que altere arquivos, **sempre** terminar a resposta com o bloco abaixo. Não executar commit, push, merge nem exclusão sem o usuário pedir.
+Ao concluir qualquer feature, correção, refatoração ou ação que altere arquivos, **sempre** terminar a resposta com o bloco abaixo. Não executar commit, push nem merge sem o usuário pedir.
 
 ## O que fazer
 
 1. Verificar o que mudou (`git status` / `git diff`) antes de redigir a mensagem.
 2. Sugerir **uma** mensagem de commit curta (1–2 frases) focada no **porquê**.
 3. Sugerir push para `origin` na **branch da tarefa** (nunca push direto na `main` a partir de trabalho em andamento).
-4. Sugerir os comandos de merge na `main` e de exclusão da branch (local, remota e worktree, se houver).
+4. Sugerir os comandos de merge na `main`.
 5. Perguntar se deve executar tudo.
 
 ## Formato da sugestão
@@ -23,21 +23,18 @@ Usar Conventional Commits em inglês: `feat:`, `fix:`, `refactor:`, `docs:`, `ch
 Commit sugerido: feat: add scene export so users can reuse layouts
 Push: git push -u origin feat/scene-export
 
-Merge e exclusão após:
+Merge após:
 git checkout main
 git pull --ff-only origin main
 git merge feat/scene-export
 git push origin main
-git branch -d feat/scene-export
-git push origin --delete feat/scene-export
 
-Quer que eu execute commit, push, merge e exclusão da branch?
+Quer que eu execute commit, push e merge na main?
 ```
-
-Se a tarefa usou worktree, incluir também `git worktree remove <path>`.
 
 ## Não fazer
 
 - Não commitar `.env`, credenciais, secrets ou arquivos gerados irrelevantes.
 - Não criar commit vazio se não houver mudanças.
 - Não fazer force push em `main`/`master`.
+- Não sugerir nem executar exclusão da branch após o merge.

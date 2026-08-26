@@ -1,5 +1,5 @@
 ---
-description: Antes de qualquer alteração, criar uma branch da tarefa; ao terminar, perguntar se pode mergear na main.
+description: Antes de qualquer alteração, criar uma branch da tarefa; ao terminar, sugerir o merge na main.
 alwaysApply: true
 ---
 
@@ -20,14 +20,13 @@ Nunca editar arquivos em `main`. Toda feature, fix, refactor, docs ou chore usa 
 
 ## Depois de finalizar
 
-1. Terminar a resposta com o bloco da rule de commit: commit, push, **e** os comandos de merge + exclusão da branch.
-2. Só executar se o usuário disser sim. Ordem: commit → push da branch → atualizar `main` (`fetch` + fast-forward) → merge → push de `main` → apagar a branch local e remota.
-3. Se usou worktree, remover o worktree depois de apagar a branch.
-4. Em conflito, parar e reportar. Sem force push em `main`.
+1. Terminar a resposta com o bloco da rule de commit: commit, push **e** os comandos de merge na `main`.
+2. Só executar se o usuário disser sim. Ordem: commit → push da branch → atualizar `main` (`fetch` + fast-forward) → merge → push de `main`.
+3. Em conflito, parar e reportar. Sem force push em `main`.
 
 ## Não fazer
 
 - Não commitar nem mergear na `main` sem pedido explícito.
 - Não trocar a branch de outro agente nem `stash`/`reset` de arquivos que você não criou.
 - Não reutilizar uma branch de tarefa antiga para um assunto diferente.
-- Não deixar branch de tarefa existir depois do merge na `main`.
+- Não sugerir nem executar exclusão da branch após o merge.
