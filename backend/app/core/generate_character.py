@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.daily_budget import assert_paid_job_allowed
 from app.core.provider_limiter import provider_semaphore
 from app.models.character import Character, CharacterAsset
 from app.models.enums import CharacterAssetType, CharacterStatus
@@ -296,9 +297,10 @@ def generate_character_asset(
             session.close()
 
 
-def enqueue_character_task(task_name: str, *args) -> None:
+def enqueue_character_task(db: Session, task_name: str, *args) -> None:
     from app.celery_app import celery_app
 
+    assert_paid_job_allowed(db)
     celery_app.send_task(task_name, args=list(args), queue="media_gen")
 
 

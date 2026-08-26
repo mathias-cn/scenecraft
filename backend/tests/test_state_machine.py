@@ -15,6 +15,7 @@ from app.core.state_machine import (
     retry_stage,
     stage_to_retry,
 )
+from app.core.daily_budget import DailyCostLimitReached
 from app.models.enums import JobStatus, ProjectStage, ProjectStatus, SourceType
 
 
@@ -374,3 +375,86 @@ def test_cannot_leave_description_stage_without_copy(monkeypatch):
     with pytest.raises(IllegalTransition, match="descrição"):
         advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
     assert project.current_stage is ProjectStage.DESCRIPTION_STAGE
+
+
+def test_paid_job_pauses_when_daily_limit_reached(monkeypatch):
+    from decimal import Decimal
+
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+
+    def deny(_db, stage=None):
+        raise DailyCostLimitReached(Decimal("5"), Decimal("1"))
+
+    monkeypatch.setattr("app.core.daily_budget.assert_paid_job_allowed", deny)
+    project = _project()
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.CREATED, db=db)
+    assert result.paused_for_cost_limit is True
+    assert result.dispatched_job_id is None
+    assert result.to_stage is ProjectStage.TRANSCRIBING
+    assert project.status is ProjectStatus.PAUSED_COST_LIMIT
+    assert project.current_stage is ProjectStage.TRANSCRIBING
+    assert db.added == []
+
+
+def test_unpaid_render_still_dispatches_when_daily_limit_reached(monkeypatch):
+    from decimal import Decimal
+
+    enqueued = []
+    monkeypatch.setattr(
+        "app.core.state_machine.enqueue_job",
+        lambda step, job_id: enqueued.append(step.queue.value),
+    )
+
+    def deny(_db, stage=None):
+        if stage is ProjectStage.RENDERING:
+            return
+        raise DailyCostLimitReached(Decimal("5"), Decimal("1"))
+
+    monkeypatch.setattr("app.core.daily_budget.assert_paid_job_allowed", deny)
+    project = _project(current_stage=ProjectStage.AUDIO_REVIEW)
+    db = FakeDB(project)
+    result = advance_stage(project.id, ProjectStage.AUDIO_REVIEW, db=db)
+    assert result.paused_for_cost_limit is False
+    assert result.to_stage is ProjectStage.RENDERING
+    assert project.status is ProjectStatus.RUNNING
+    assert enqueued == ["render"]
+
+
+def test_retry_after_cost_limit_redispatches(monkeypatch):
+    enqueued = []
+    monkeypatch.setattr(
+        "app.core.state_machine.enqueue_job",
+        lambda step, job_id: enqueued.append(step.queue.value),
+    )
+    monkeypatch.setattr("app.core.daily_budget.assert_paid_job_allowed", lambda *a, **k: None)
+    project = _project(
+        current_stage=ProjectStage.TRANSCRIBING,
+        status=ProjectStatus.PAUSED_COST_LIMIT,
+    )
+    db = FakeDB(project)
+    result = retry_stage(project.id, db=db)
+    assert result.paused_for_cost_limit is False
+    assert project.status is ProjectStatus.RUNNING
+    assert enqueued == ["transcribe"]
+    assert result.dispatched_job_id is not None
+
+
+def test_retry_while_still_over_limit_stays_paused(monkeypatch):
+    from decimal import Decimal
+
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
+
+    def deny(_db, stage=None):
+        raise DailyCostLimitReached(Decimal("5"), Decimal("1"))
+
+    monkeypatch.setattr("app.core.daily_budget.assert_paid_job_allowed", deny)
+    project = _project(
+        current_stage=ProjectStage.GENERATING_MEDIA,
+        status=ProjectStatus.PAUSED_COST_LIMIT,
+    )
+    db = FakeDB(project)
+    result = retry_stage(project.id, db=db)
+    assert result.paused_for_cost_limit is True
+    assert project.status is ProjectStatus.PAUSED_COST_LIMIT
+    assert db.added == []

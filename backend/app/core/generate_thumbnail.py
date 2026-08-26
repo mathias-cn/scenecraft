@@ -8,6 +8,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.daily_budget import assert_paid_job_allowed
 from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
@@ -196,6 +197,7 @@ def enqueue_thumbnail_generate(
             or project.status is not ProjectStatus.PAUSED_FOR_REVIEW
         ):
             raise IllegalTransition("thumbnail só pode ser gerada em thumbnail_stage")
+        assert_paid_job_allowed(session, ProjectStage.THUMBNAIL_STAGE)
         enqueue = send_task
         if enqueue is None:
             from app.celery_app import celery_app

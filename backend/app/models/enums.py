@@ -32,6 +32,7 @@ class ProjectStatus(str, enum.Enum):
     PENDING = "pending"
     RUNNING = "running"
     PAUSED_FOR_REVIEW = "paused_for_review"
+    PAUSED_COST_LIMIT = "paused_cost_limit"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"

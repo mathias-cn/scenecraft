@@ -312,6 +312,26 @@ def test_enqueue_scene_regenerate_queues_only_that_scene():
         )
 
 
+def test_enqueue_scene_regenerate_blocks_when_daily_limit_reached(monkeypatch):
+    from decimal import Decimal
+
+    from app.core.daily_budget import DailyCostLimitReached
+    from app.core.generate_scene_media import enqueue_scene_regenerate
+    from app.models.enums import ProjectStage, ProjectStatus
+
+    def deny(_db, stage=None):
+        raise DailyCostLimitReached(Decimal("5"), Decimal("1"))
+
+    monkeypatch.setattr("app.core.generate_scene_media.assert_paid_job_allowed", deny)
+    project, scene = _scene_project("openai")
+    project.current_stage = ProjectStage.MEDIA_REVIEW
+    project.status = ProjectStatus.PAUSED_FOR_REVIEW
+    db = FakeDB(project, scene)
+    with pytest.raises(DailyCostLimitReached):
+        enqueue_scene_regenerate(project.id, scene.id, db=db, send_task=lambda *_a, **_k: None)
+    assert scene.status is not SceneStatus.GENERATING
+
+
 def test_generate_scene_media_does_not_advance_during_media_review(monkeypatch):
     from app.models.enums import ProjectStage
 

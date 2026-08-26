@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Any, Sequence
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -159,3 +159,33 @@ def load_cost_series(db: Session, *, now: datetime | None = None) -> dict[str, A
     rows = db.execute(daily_cost_totals_stmt()).all()
     daily_rows = [(row.period, row.total_usd) for row in rows]
     return build_cost_series(daily_rows, now=now)
+
+
+def local_day_bounds(
+    now: datetime | None = None,
+    tz_name: str = COST_TIMEZONE,
+) -> tuple[datetime, datetime]:
+    """Início (inclusive) e fim (exclusive) do dia local atual."""
+    tz = _zone(tz_name)
+    current = now or datetime.now(tz)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc).astimezone(tz)
+    else:
+        current = current.astimezone(tz)
+    start = datetime.combine(current.date(), time.min, tzinfo=tz)
+    return start, start + timedelta(days=1)
+
+
+def today_cost_stmt(tz: str = COST_TIMEZONE, now: datetime | None = None):
+    """Soma o gasto estimado no dia local corrente."""
+    start, end = local_day_bounds(now, tz)
+    entries = cost_entries_union().subquery("cost_entries")
+    return select(func.coalesce(func.sum(entries.c.cost_usd), 0)).where(
+        entries.c.spent_at >= start,
+        entries.c.spent_at < end,
+    )
+
+
+def load_today_cost(db: Session, *, now: datetime | None = None) -> Any:
+    value = db.execute(today_cost_stmt(now=now)).scalar_one()
+    return as_usd(value)

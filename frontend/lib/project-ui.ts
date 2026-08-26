@@ -21,11 +21,19 @@ export const STAGE_LABEL: Record<ProjectStage, string> = {
   failed: "Falhou",
 };
 
-export type StatusTone = "running" | "paused_for_review" | "failed" | "done" | "pending" | "cancelled";
+export type StatusTone =
+  | "running"
+  | "paused_for_review"
+  | "paused_cost_limit"
+  | "failed"
+  | "done"
+  | "pending"
+  | "cancelled";
 
 export function statusTone(status: ProjectStatus): StatusTone {
   if (status === "completed") return "done";
   if (status === "paused_for_review") return "paused_for_review";
+  if (status === "paused_cost_limit") return "paused_cost_limit";
   if (status === "failed") return "failed";
   if (status === "cancelled") return "cancelled";
   if (status === "running") return "running";
@@ -35,6 +43,7 @@ export function statusTone(status: ProjectStatus): StatusTone {
 export const STATUS_LABEL: Record<StatusTone, string> = {
   running: "running",
   paused_for_review: "paused_for_review",
+  paused_cost_limit: "limite diário",
   failed: "failed",
   done: "done",
   pending: "pending",
@@ -44,6 +53,7 @@ export const STATUS_LABEL: Record<StatusTone, string> = {
 export const STATUS_CLASS: Record<StatusTone, string> = {
   running: "bg-sky-500/15 text-sky-300",
   paused_for_review: "bg-brass-500/15 text-brass-400",
+  paused_cost_limit: "bg-amber-500/15 text-amber-300",
   failed: "bg-red-500/15 text-red-300",
   done: "bg-emerald-500/15 text-emerald-300",
   pending: "bg-white/10 text-white/55",

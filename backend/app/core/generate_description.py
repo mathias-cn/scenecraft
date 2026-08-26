@@ -6,6 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.daily_budget import assert_paid_job_allowed
 from app.core.generate_thumbnail import project_transcript_text
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
@@ -120,6 +121,7 @@ def enqueue_description_generate(
     session, owns = _session(db)
     try:
         project = _paused_description_project(session, project_id)
+        assert_paid_job_allowed(session, ProjectStage.DESCRIPTION_STAGE)
         enqueue = send_task
         if enqueue is None:
             from app.celery_app import celery_app

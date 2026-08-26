@@ -200,6 +200,7 @@ class AdvanceRead(BaseModel):
     paused_for_review: bool
     dispatched_job_id: uuid.UUID | None = None
     auto_advanced: bool = False
+    paused_for_cost_limit: bool = False
 
 
 class ProjectRead(BaseModel):
@@ -335,6 +336,16 @@ class CostSeriesRead(BaseModel):
     total_usd: Decimal
     daily: list[CostPeriodRead]
     monthly: list[CostPeriodRead]
+    today_usd: Decimal
+    daily_limit_usd: Decimal | None = None
+    limit_reached: bool = False
+
+
+class CostBudgetRead(BaseModel):
+    timezone: str
+    today_usd: Decimal
+    daily_limit_usd: Decimal | None = None
+    limit_reached: bool
 
 
 class ProjectCostRead(BaseModel):

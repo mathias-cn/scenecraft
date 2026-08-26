@@ -88,14 +88,18 @@ export function ProjectDetailView({ initial }: ProjectDetailViewProps) {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={project.status} />
-          {project.status === "failed" ? (
+          {project.status === "failed" || project.status === "paused_cost_limit" ? (
             <button
               type="button"
               disabled={retryBusy}
               onClick={() => void onRetry()}
-              className="rounded-full bg-red-400 px-3 py-1 font-mono text-[10px] font-medium tracking-wide text-ink-950 uppercase disabled:opacity-50"
+              className={`rounded-full px-3 py-1 font-mono text-[10px] font-medium tracking-wide uppercase disabled:opacity-50 ${
+                project.status === "paused_cost_limit"
+                  ? "bg-amber-400 text-ink-950"
+                  : "bg-red-400 text-ink-950"
+              }`}
             >
-              Retry estágio
+              {project.status === "paused_cost_limit" ? "Tentar de novo" : "Retry estágio"}
             </button>
           ) : null}
         </div>
@@ -113,6 +117,15 @@ export function ProjectDetailView({ initial }: ProjectDetailViewProps) {
       {packReady ? (
         <div className="mt-6">
           <CompletedPack project={project} onUpdated={(next) => setProject(normalize(next))} />
+        </div>
+      ) : project.status === "paused_cost_limit" ? (
+        <div className="mt-6 rounded-xl border border-amber-500/35 bg-amber-950/30 px-4 py-5">
+          <p className="label-tech text-amber-400">paused_cost_limit</p>
+          <h3 className="mt-2 text-lg font-medium text-white">Limite diário de custo atingido</h3>
+          <p className="mt-2 text-sm text-white/55">
+            O pipeline parou em {STAGE_LABEL[project.current_stage]} para não disparar jobs pagos
+            (LLM, imagens, TTS). Quando o dia virar no fuso de São Paulo, use Tentar de novo.
+          </p>
         </div>
       ) : project.status === "paused_for_review" ? (
         <div className="mt-6">

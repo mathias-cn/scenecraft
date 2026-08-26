@@ -139,6 +139,7 @@ Veja `.env.example`. As principais:
 | `HIGGSFIELD_API_KEY` | Geração de vídeo |
 | `ELEVENLABS_API_KEY` | TTS / narração |
 | `OPENAI_API_KEY` | Whisper, LLM e imagens |
+| `DAILY_COST_LIMIT_USD` | Teto de gasto estimado por dia (São Paulo); vazio/0 = sem limite |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | S3 ou R2 |
 | `R2_ACCOUNT_ID` | Conta Cloudflare R2 |
 

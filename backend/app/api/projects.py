@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
+from app.core.daily_budget import DailyCostLimitReached
 from app.core.export_project import export_project
 from app.core.generate_description import DescriptionError, confirm_description, enqueue_description_generate
 from app.core.generate_scene_media import enqueue_scene_regenerate
@@ -121,6 +122,8 @@ CreateInputDep = Annotated[CreateProjectInput, Depends(parse_create_input)]
 def _http_for_transition(exc: Exception) -> HTTPException:
     if isinstance(exc, ProjectNotFound):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    if isinstance(exc, DailyCostLimitReached):
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     if isinstance(exc, IllegalTransition):
         return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
@@ -233,7 +236,7 @@ def advance_project(
         from_stage = project.current_stage
     try:
         result = advance_stage(project_id, from_stage, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     return AdvanceRead.model_validate(result)
 
@@ -242,7 +245,7 @@ def advance_project(
 def retry_project_stage(project_id: UUID, db: DbDep) -> AdvanceRead:
     try:
         result = retry_stage(project_id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     return AdvanceRead.model_validate(result)
 
@@ -289,7 +292,7 @@ def regenerate_project_scene(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Scene not found")
     try:
         enqueue_scene_regenerate(project.id, scene.id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -305,7 +308,7 @@ def regenerate_project_render(project_id: UUID, db: DbDep) -> ProjectDetail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
         enqueue_render_regenerate(project.id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -321,7 +324,7 @@ def generate_project_thumbnail(project_id: UUID, db: DbDep) -> ProjectDetail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
         enqueue_thumbnail_generate(project.id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -351,7 +354,7 @@ def upload_project_thumbnail(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
     except StorageError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -367,7 +370,7 @@ def generate_project_description(project_id: UUID, db: DbDep) -> ProjectDetail:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     try:
         enqueue_description_generate(project.id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -389,7 +392,7 @@ def confirm_project_description(
         confirm_description(project.id, payload.text, payload.tags, db=db)
     except DescriptionError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
@@ -451,11 +454,14 @@ def generate_project_narration(
     project.automation_config = config
     flag_modified(project, "automation_config")
     project.status = ProjectStatus.RUNNING
-    start_audio_stage_job(
-        db,
-        project,
-        {"audio_generation_mode": "elevenlabs", "voice_id": payload.voice_id.strip()},
-    )
+    try:
+        start_audio_stage_job(
+            db,
+            project,
+            {"audio_generation_mode": "elevenlabs", "voice_id": payload.voice_id.strip()},
+        )
+    except DailyCostLimitReached as exc:
+        raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
     if project is None:
@@ -495,7 +501,10 @@ def upload_project_audio(
     db.add(track)
     set_final_audio(db, project, url, AudioTrackSource.USER_UPLOAD.value)
     project.status = ProjectStatus.RUNNING
-    start_audio_stage_job(db, project, {"audio_generation_mode": "user_upload"})
+    try:
+        start_audio_stage_job(db, project, {"audio_generation_mode": "user_upload"})
+    except DailyCostLimitReached as exc:
+        raise _http_for_transition(exc) from exc
     db.commit()
     project = _detail_query(db, project_id)
     if project is None:
@@ -507,7 +516,7 @@ def upload_project_audio(
 def complete_project_pack(project_id: UUID, db: DbDep) -> ProjectDetail:
     try:
         complete_project(project_id, db=db)
-    except (ProjectNotFound, IllegalTransition) as exc:
+    except (ProjectNotFound, IllegalTransition, DailyCostLimitReached) as exc:
         raise _http_for_transition(exc) from exc
     project = _detail_query(db, project_id)
     if project is None:

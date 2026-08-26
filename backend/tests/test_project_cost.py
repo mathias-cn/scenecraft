@@ -130,3 +130,28 @@ def test_load_cost_series_uses_grouped_query_rows():
     series = load_cost_series(FakeDB(), now=now)
     assert series["daily"][-1]["total_usd"] == Decimal("0.500000")
     assert series["total_usd"] == Decimal("0.500000")
+
+
+def test_today_cost_sql_filters_spent_at_window():
+    from sqlalchemy.dialects import postgresql
+
+    from app.core.project_cost import today_cost_stmt
+
+    sql = str(today_cost_stmt().compile(dialect=postgresql.dialect())).lower()
+    assert "union all" in sql
+    assert "sum" in sql
+    assert "spent_at" in sql
+
+
+def test_load_today_cost_reads_scalar():
+    from app.core.project_cost import load_today_cost
+
+    class FakeResult:
+        def scalar_one(self):
+            return Decimal("1.250000")
+
+    class FakeDB:
+        def execute(self, _stmt):
+            return FakeResult()
+
+    assert load_today_cost(FakeDB()) == Decimal("1.250000")

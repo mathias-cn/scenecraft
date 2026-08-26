@@ -1,7 +1,8 @@
+from decimal import Decimal
 from functools import lru_cache
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +48,14 @@ class Settings(BaseSettings):
     cloudflare_api_token: str = ""
 
     cors_origins: str = "http://localhost:3000"
+    daily_cost_limit_usd: Decimal | None = Field(default=None, ge=0)
+
+    @field_validator("daily_cost_limit_usd", mode="before")
+    @classmethod
+    def _blank_daily_cost_limit(cls, value: object) -> object:
+        if value is None or value == "":
+            return None
+        return value
 
     celery_loglevel: str = "info"
     celery_task_max_retries: int = Field(default=2, ge=0, le=10)

@@ -65,6 +65,7 @@ class AdvanceResult:
     paused_for_review: bool
     dispatched_job_id: UUID | None = None
     auto_advanced: bool = False
+    paused_for_cost_limit: bool = False
 
 
 def parse_stage(value: ProjectStage | str) -> ProjectStage:
@@ -140,6 +141,9 @@ def dispatch_job_group(
     job_group_id: UUID | None = None,
 ) -> tuple[UUID, list[Job]]:
     """Cria N jobs queued com o mesmo `job_group_id` e enfileira no Celery."""
+    from app.core.daily_budget import assert_paid_job_allowed
+
+    assert_paid_job_allowed(db, stage)
     if not payloads:
         raise IllegalTransition(f"{stage.value} exige ao menos um job no grupo")
     step = step_for_stage(stage)
@@ -184,6 +188,51 @@ def _dispatch_work(db: Session, project: Project, stage: ProjectStage) -> Job:
     return jobs[0]
 
 
+def _result(
+    project: Project,
+    expected: ProjectStage,
+    nxt: ProjectStage,
+    *,
+    paused_for_review: bool = False,
+    dispatched_job_id: UUID | None = None,
+    auto_advanced: bool = False,
+    paused_for_cost_limit: bool = False,
+) -> AdvanceResult:
+    return AdvanceResult(
+        project_id=project.id,
+        from_stage=expected,
+        to_stage=nxt,
+        status=project.status,
+        paused_for_review=paused_for_review,
+        dispatched_job_id=dispatched_job_id,
+        auto_advanced=auto_advanced,
+        paused_for_cost_limit=paused_for_cost_limit,
+    )
+
+
+def _dispatch_or_pause(
+    session: Session,
+    project: Project,
+    expected: ProjectStage,
+    stage: ProjectStage,
+    *,
+    auto_advanced: bool = False,
+) -> AdvanceResult:
+    """Enfileira o job pago/não-pago; se o teto diário estourou, pausa sem criar job."""
+    from app.core.daily_budget import DailyCostLimitReached
+
+    project.status = ProjectStatus.RUNNING
+    try:
+        job = _dispatch_work(session, project, stage)
+    except DailyCostLimitReached:
+        project.status = ProjectStatus.PAUSED_COST_LIMIT
+        project.updated_at = _now()
+        session.commit()
+        return _result(project, expected, stage, paused_for_cost_limit=True, auto_advanced=auto_advanced)
+    session.commit()
+    return _result(project, expected, stage, dispatched_job_id=job.id, auto_advanced=auto_advanced)
+
+
 def stage_to_retry(project: Project, recent_jobs: list[Job]) -> ProjectStage | None:
     """Estágio de trabalho a reexecutar: o atual, ou o do último job se o projeto ficou em `failed`."""
     current = parse_stage(project.current_stage)
@@ -223,7 +272,12 @@ def retry_stage(
             raise IllegalTransition("projeto já concluído")
         if project.status is ProjectStatus.CANCELLED:
             raise IllegalTransition("projeto cancelado")
-        if project.status is not ProjectStatus.FAILED and current is not ProjectStage.FAILED:
+        cost_paused = project.status is ProjectStatus.PAUSED_COST_LIMIT
+        if (
+            not cost_paused
+            and project.status is not ProjectStatus.FAILED
+            and current is not ProjectStage.FAILED
+        ):
             raise IllegalTransition("retry só é permitido após falha")
 
         jobs = list(
@@ -241,16 +295,19 @@ def retry_stage(
         project.current_stage = stage
         project.status = ProjectStatus.RUNNING
         project.updated_at = _now()
-        _, created = dispatch_job_group(session, project, stage, payloads)
+        try:
+            _, created = dispatch_job_group(session, project, stage, payloads)
+        except Exception as exc:
+            from app.core.daily_budget import DailyCostLimitReached
+
+            if not isinstance(exc, DailyCostLimitReached):
+                raise
+            project.status = ProjectStatus.PAUSED_COST_LIMIT
+            project.updated_at = _now()
+            session.commit()
+            return _result(project, stage, stage, paused_for_cost_limit=True)
         session.commit()
-        return AdvanceResult(
-            project_id=project.id,
-            from_stage=stage,
-            to_stage=stage,
-            status=project.status,
-            paused_for_review=False,
-            dispatched_job_id=created[0].id,
-        )
+        return _result(project, stage, stage, dispatched_job_id=created[0].id)
     except Exception:
         session.rollback()
         raise
@@ -307,88 +364,31 @@ def advance_stage(
             project.current_stage = ProjectStage.RENDERING
             nxt = ProjectStage.RENDERING
             project.updated_at = _now()
-            project.status = ProjectStatus.RUNNING
-            job = _dispatch_work(session, project, nxt)
-            session.commit()
-            return AdvanceResult(
-                project_id=project.id,
-                from_stage=expected,
-                to_stage=nxt,
-                status=project.status,
-                paused_for_review=False,
-                dispatched_job_id=job.id,
-                auto_advanced=True,
-            )
+            return _dispatch_or_pause(session, project, expected, nxt, auto_advanced=True)
 
         if nxt is ProjectStage.AUDIO_STAGE:
             project.status = ProjectStatus.PAUSED_FOR_REVIEW
             session.commit()
-            return AdvanceResult(
-                project_id=project.id,
-                from_stage=expected,
-                to_stage=nxt,
-                status=project.status,
-                paused_for_review=True,
-            )
+            return _result(project, expected, nxt, paused_for_review=True)
 
         if nxt is ProjectStage.THUMBNAIL_STAGE:
             if config_bool(project.automation_config, "auto_thumbnail"):
-                project.status = ProjectStatus.RUNNING
-                job = _dispatch_work(session, project, nxt)
-                session.commit()
-                return AdvanceResult(
-                    project_id=project.id,
-                    from_stage=expected,
-                    to_stage=nxt,
-                    status=project.status,
-                    paused_for_review=False,
-                    dispatched_job_id=job.id,
-                    auto_advanced=True,
-                )
+                return _dispatch_or_pause(session, project, expected, nxt, auto_advanced=True)
             project.status = ProjectStatus.PAUSED_FOR_REVIEW
             session.commit()
-            return AdvanceResult(
-                project_id=project.id,
-                from_stage=expected,
-                to_stage=nxt,
-                status=project.status,
-                paused_for_review=True,
-            )
+            return _result(project, expected, nxt, paused_for_review=True)
 
         if nxt is ProjectStage.DESCRIPTION_STAGE:
             if config_bool(project.automation_config, "auto_description"):
-                project.status = ProjectStatus.RUNNING
-                job = _dispatch_work(session, project, nxt)
-                session.commit()
-                return AdvanceResult(
-                    project_id=project.id,
-                    from_stage=expected,
-                    to_stage=nxt,
-                    status=project.status,
-                    paused_for_review=False,
-                    dispatched_job_id=job.id,
-                    auto_advanced=True,
-                )
+                return _dispatch_or_pause(session, project, expected, nxt, auto_advanced=True)
             project.status = ProjectStatus.PAUSED_FOR_REVIEW
             session.commit()
-            return AdvanceResult(
-                project_id=project.id,
-                from_stage=expected,
-                to_stage=nxt,
-                status=project.status,
-                paused_for_review=True,
-            )
+            return _result(project, expected, nxt, paused_for_review=True)
 
         if is_review_stage(nxt) and not auto_flag_enabled(project.automation_config, nxt):
             project.status = ProjectStatus.PAUSED_FOR_REVIEW
             session.commit()
-            return AdvanceResult(
-                project_id=project.id,
-                from_stage=expected,
-                to_stage=nxt,
-                status=project.status,
-                paused_for_review=True,
-            )
+            return _result(project, expected, nxt, paused_for_review=True)
 
         if is_review_stage(nxt) and auto_flag_enabled(project.automation_config, nxt):
             session.flush()
@@ -401,19 +401,10 @@ def advance_stage(
                 paused_for_review=nested.paused_for_review,
                 dispatched_job_id=nested.dispatched_job_id,
                 auto_advanced=True,
+                paused_for_cost_limit=nested.paused_for_cost_limit,
             )
 
-        project.status = ProjectStatus.RUNNING
-        job = _dispatch_work(session, project, nxt)
-        session.commit()
-        return AdvanceResult(
-            project_id=project.id,
-            from_stage=expected,
-            to_stage=nxt,
-            status=project.status,
-            paused_for_review=False,
-            dispatched_job_id=job.id,
-        )
+        return _dispatch_or_pause(session, project, expected, nxt)
     except Exception:
         session.rollback()
         raise

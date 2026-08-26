@@ -45,6 +45,25 @@ export default async function CostsPage() {
             Total acumulado: <span className="font-medium text-brass-400">{formatUsd(series.total_usd)}</span>
             <span className="ml-2 font-mono text-[11px] text-white/35">{series.timezone}</span>
           </p>
+          {series.daily_limit_usd != null ? (
+            <p
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                series.limit_reached
+                  ? "border-amber-500/35 bg-amber-950/40 text-amber-100"
+                  : "border-white/[0.08] bg-ink-900 text-white/70"
+              }`}
+            >
+              Hoje: <span className="font-medium text-white">{formatUsd(series.today_usd)}</span>
+              {" / "}
+              {formatUsd(series.daily_limit_usd)}
+              {series.limit_reached ? " — limite diário atingido; jobs pagos pausados." : ""}
+            </p>
+          ) : (
+            <p className="text-sm text-white/40">
+              Sem teto diário. Defina <span className="font-mono text-[11px]">DAILY_COST_LIMIT_USD</span> no
+              .env para pausar jobs pagos ao atingir o valor.
+            </p>
+          )}
           <CostBarChart
             title="Por dia"
             caption="Últimos 30 dias, no fuso de São Paulo."

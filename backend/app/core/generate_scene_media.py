@@ -9,6 +9,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.daily_budget import assert_paid_job_allowed
 from app.core.job_groups import check_job_group_complete
 from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.provider_limiter import provider_semaphore
@@ -218,6 +219,7 @@ def enqueue_scene_regenerate(
         scene = session.get(Scene, sid)
         if scene is None or scene.project_id != project.id:
             raise ProjectNotFound(f"scene {sid}")
+        assert_paid_job_allowed(session, ProjectStage.GENERATING_MEDIA)
         scene.status = SceneStatus.GENERATING
         session.flush()
         enqueue = send_task

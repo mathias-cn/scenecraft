@@ -24,6 +24,7 @@ export type ProjectStatus =
   | "pending"
   | "running"
   | "paused_for_review"
+  | "paused_cost_limit"
   | "completed"
   | "failed"
   | "cancelled";
@@ -179,6 +180,7 @@ export type AdvanceResult = {
   status: ProjectStatus;
   paused_for_review: boolean;
   dispatched_job_id: string | null;
+  paused_for_cost_limit?: boolean;
 };
 
 export type ProjectExport = {
@@ -198,4 +200,14 @@ export type CostSeries = {
   total_usd: string | number;
   daily: CostPeriod[];
   monthly: CostPeriod[];
+  today_usd: string | number;
+  daily_limit_usd: string | number | null;
+  limit_reached: boolean;
+};
+
+export type CostBudget = {
+  timezone: string;
+  today_usd: string | number;
+  daily_limit_usd: string | number | null;
+  limit_reached: boolean;
 };

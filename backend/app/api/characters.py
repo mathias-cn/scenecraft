@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import noload, selectinload
 
 from app.api.deps import DbDep
+from app.core.daily_budget import DailyCostLimitReached, assert_paid_job_allowed
 from app.core.generate_character import enqueue_character_task, reference_filename
 from app.models.character import Character
 from app.models.enums import CharacterStatus
@@ -59,7 +60,11 @@ async def parse_character_input(request: Request) -> CreateCharacterInput:
     return CreateCharacterInput(payload, None)
 
 
-CreateInputDep = Annotated[CreateCharacterInput, Depends(parse_character_input)]
+def _guard_paid_jobs(db) -> None:
+    try:
+        assert_paid_job_allowed(db)
+    except DailyCostLimitReached as exc:
+        raise HTTPException(status_code=http_status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 def _assert_image_file(file: UploadFile | None) -> None:
@@ -136,6 +141,7 @@ def create_character(parsed: CreateInputDep, db: DbDep) -> CharacterRead:
     has_file = file is not None and bool(file.filename)
     _assert_image_file(file if has_file else None)
     _require_style(db, payload.style_id, must_be_active=True)
+    _guard_paid_jobs(db)
 
     character = Character(
         description_prompt=payload.description_prompt,
@@ -156,7 +162,7 @@ def create_character(parsed: CreateInputDep, db: DbDep) -> CharacterRead:
             ) from exc
     db.commit()
     row = _detail_query(db, character.id)
-    enqueue_character_task(TASK_BASE, str(character.id))
+    enqueue_character_task(db, TASK_BASE, str(character.id))
     return _to_read(row or character, include_assets=True)
 
 
@@ -178,6 +184,7 @@ def approve_character(character_id: UUID, db: DbDep) -> CharacterRead:
             status_code=http_status.HTTP_409_CONFLICT,
             detail="só é possível aprovar um personagem aguardando revisão",
         )
+    _guard_paid_jobs(db)
     if not (row.base_image_url or "").strip():
         raise HTTPException(
             status_code=http_status.HTTP_409_CONFLICT,
@@ -186,7 +193,7 @@ def approve_character(character_id: UUID, db: DbDep) -> CharacterRead:
     row.status = CharacterStatus.APPROVED
     db.commit()
     row = _detail_query(db, character_id)
-    enqueue_character_task(TASK_SET, str(character_id))
+    enqueue_character_task(db, TASK_SET, str(character_id))
     return _to_read(row, include_assets=True)
 
 
@@ -221,6 +228,7 @@ def retry_character(character_id: UUID, parsed: CreateInputDep, db: DbDep) -> Ch
     has_file = file is not None and bool(file.filename)
     _assert_image_file(file if has_file else None)
     _require_style(db, payload.style_id, must_be_active=True)
+    _guard_paid_jobs(db)
     row.description_prompt = payload.description_prompt
     row.style_id = payload.style_id
     row.base_image_url = None
@@ -238,5 +246,5 @@ def retry_character(character_id: UUID, parsed: CreateInputDep, db: DbDep) -> Ch
         row.reference_image_url = payload.reference_image_url
     db.commit()
     row = _detail_query(db, character_id)
-    enqueue_character_task(TASK_BASE, str(character_id))
+    enqueue_character_task(db, TASK_BASE, str(character_id))
     return _to_read(row, include_assets=True)

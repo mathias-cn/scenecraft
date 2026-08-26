@@ -9,6 +9,7 @@ import type {
   ProjectDetail,
   ProjectExport,
   CostSeries,
+  CostBudget,
   Style,
   TranscriptSegmentPatch,
 } from "./types";
@@ -115,6 +116,10 @@ export function completeProject(id: string) {
 
 export function getCostSeries() {
   return apiGet<CostSeries>("/api/costs");
+}
+
+export function getCostBudget() {
+  return apiGet<CostBudget>("/api/costs/budget");
 }
 
 export function listStyles(active?: boolean) {

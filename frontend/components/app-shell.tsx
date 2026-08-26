@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import type { ReactNode } from "react";
 
+import { DailyCostBanner } from "@/components/daily-cost-banner";
 import { IconCharacters, IconClose, IconCosts, IconMenu, IconProjects, IconSettings, IconStyles } from "@/components/icons";
 import { NAV_ITEMS, titleForPath } from "@/lib/nav";
 
@@ -101,7 +102,10 @@ export function AppShell({ children }: AppShellProps) {
             YouTube · auto
           </span>
         </header>
-        <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
+          <DailyCostBanner />
+          {children}
+        </main>
       </div>
     </div>
   );
