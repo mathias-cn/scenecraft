@@ -12,15 +12,10 @@ type RenderReviewProps = {
   onUpdated: (project: ProjectDetail) => void;
 };
 
-function cacheBusted(url: string, bust: number): string {
-  return `${url}${url.includes("?") ? "&" : "?"}v=${bust}`;
-}
-
 export function RenderReview({ project, onUpdated }: RenderReviewProps) {
   const [busy, setBusy] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bust, setBust] = useState(0);
   const onUpdatedRef = useRef(onUpdated);
   onUpdatedRef.current = onUpdated;
 
@@ -38,7 +33,6 @@ export function RenderReview({ project, onUpdated }: RenderReviewProps) {
           const still = next.video_assembly?.status === "rendering";
           if (!still) {
             setRegenerating(false);
-            setBust(Date.now());
           }
           onUpdatedRef.current(next);
         })
@@ -74,7 +68,7 @@ export function RenderReview({ project, onUpdated }: RenderReviewProps) {
     }
   }
 
-  const src = url ? cacheBusted(url, bust) : null;
+  const src = url || null;
 
   return (
     <div>

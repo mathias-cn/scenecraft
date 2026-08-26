@@ -2,9 +2,10 @@ import uuid
 from decimal import Decimal
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, computed_field, field_validator
 
 from app.models.enums import CharacterAssetType, CharacterStatus
+from app.schemas.assets import SignedAssetModel, presign, stored_key_field
 from app.schemas.style import StyleRead
 
 
@@ -30,27 +31,38 @@ class CharacterCreate(BaseModel):
         return text or None
 
 
-class CharacterAssetRead(BaseModel):
+class CharacterAssetRead(SignedAssetModel):
     id: uuid.UUID
     character_id: uuid.UUID
     asset_type: CharacterAssetType
-    image_url: str
+    stored_image_url: str = stored_key_field("image_url", required=True)
     cost_usd: Decimal | None = None
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def image_url(self) -> str:
+        return presign(self.stored_image_url) or ""
 
 
-class CharacterRead(BaseModel):
+class CharacterRead(SignedAssetModel):
     id: uuid.UUID
     description_prompt: str
     style_id: uuid.UUID
     style: StyleRead | None = None
-    reference_image_url: str | None
-    base_image_url: str | None
+    stored_reference_image_url: str | None = stored_key_field("reference_image_url")
+    stored_base_image_url: str | None = stored_key_field("base_image_url")
     status: CharacterStatus
     created_at: datetime
     cost_usd: Decimal | None = None
     assets: list[CharacterAssetRead] = Field(default_factory=list)
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def reference_image_url(self) -> str | None:
+        return presign(self.stored_reference_image_url)
+
+    @computed_field
+    @property
+    def base_image_url(self) -> str | None:
+        return presign(self.stored_base_image_url)

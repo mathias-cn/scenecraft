@@ -33,7 +33,6 @@ export function MediaReview({ project, onUpdated }: MediaReviewProps) {
   const [busy, setBusy] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [bust, setBust] = useState<Record<string, number>>({});
   const onUpdatedRef = useRef(onUpdated);
   onUpdatedRef.current = onUpdated;
   const scenes = [...(project.scenes ?? [])].sort((a, b) => a.index - b.index);
@@ -62,7 +61,6 @@ export function MediaReview({ project, onUpdated }: MediaReviewProps) {
     setError(null);
     try {
       const next = await regenerateScene(project.id, sceneId);
-      setBust((current) => ({ ...current, [sceneId]: Date.now() }));
       onUpdated(next);
     } catch (err) {
       setRegeneratingId(null);
@@ -94,9 +92,7 @@ export function MediaReview({ project, onUpdated }: MediaReviewProps) {
           const text = sceneTranscript(scene, project.transcript_segments ?? []);
           const durationMs = Math.max(0, scene.end_ms - scene.start_ms);
           const pending = isGenerating(scene) || regeneratingId === scene.id;
-          const src = scene.media_url
-            ? `${scene.media_url}${scene.media_url.includes("?") ? "&" : "?"}v=${bust[scene.id] ?? 0}`
-            : null;
+          const src = scene.media_url || null;
           return (
             <li key={scene.id} className="overflow-hidden rounded-lg border border-white/10 bg-ink-950">
               {src && !pending ? (

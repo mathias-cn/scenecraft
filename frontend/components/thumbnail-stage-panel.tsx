@@ -19,10 +19,6 @@ function latestOf(thumbs: Thumbnail[], source: string): Thumbnail | undefined {
   return matches.at(-1);
 }
 
-function cacheBusted(url: string, bust: number): string {
-  return `${url}${url.includes("?") ? "&" : "?"}v=${bust}`;
-}
-
 export function ThumbnailStagePanel({ project, onUpdated }: ThumbnailStagePanelProps) {
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -30,7 +26,6 @@ export function ThumbnailStagePanel({ project, onUpdated }: ThumbnailStagePanelP
   const [error, setError] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [localPreview, setLocalPreview] = useState<string | null>(null);
-  const [bust, setBust] = useState(0);
   const knownIdsRef = useRef(new Set((project.thumbnails ?? []).map((item) => item.id)));
   const onUpdatedRef = useRef(onUpdated);
   onUpdatedRef.current = onUpdated;
@@ -65,7 +60,6 @@ export function ThumbnailStagePanel({ project, onUpdated }: ThumbnailStagePanelP
           if (arrived) {
             knownIdsRef.current = ids;
             setGenerating(false);
-            setBust(Date.now());
           }
           onUpdatedRef.current(next);
         })
@@ -119,7 +113,7 @@ export function ThumbnailStagePanel({ project, onUpdated }: ThumbnailStagePanelP
     }
   }
 
-  const generatedSrc = generated ? cacheBusted(generated.file_url, bust) : null;
+  const generatedSrc = generated?.file_url ?? null;
   const uploadedSrc = localPreview ?? uploaded?.file_url ?? null;
   const blocked = busy || pending || uploading;
 

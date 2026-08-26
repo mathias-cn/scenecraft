@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from app.models.enums import (
     AssemblyStatus,
@@ -24,6 +24,7 @@ from app.providers.image_provider import (
     IMAGE_QUALITIES,
     OPENAI_IMAGE_MODELS,
 )
+from app.schemas.assets import SignedAssetModel, presign, stored_key_field
 
 AUDIO_GENERATION_MODES = ("elevenlabs", "user_upload")
 SCENE_PACING_VALUES = ("short", "medium", "long")
@@ -155,12 +156,22 @@ class AudioGenerateRequest(BaseModel):
     voice_id: str = Field(min_length=1, max_length=128)
 
 
-class VideoAssemblyExportRead(BaseModel):
-    output_url: str | None = None
+class VideoAssemblyExportRead(SignedAssetModel):
+    stored_output_url: str | None = stored_key_field("output_url")
+
+    @computed_field
+    @property
+    def output_url(self) -> str | None:
+        return presign(self.stored_output_url)
 
 
-class ThumbnailsExportRead(BaseModel):
-    file_url: str | None = None
+class ThumbnailsExportRead(SignedAssetModel):
+    stored_file_url: str | None = stored_key_field("file_url")
+
+    @computed_field
+    @property
+    def file_url(self) -> str | None:
+        return presign(self.stored_file_url)
 
 
 class DescriptionsExportRead(BaseModel):
@@ -218,7 +229,7 @@ class ProjectRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class SceneRead(BaseModel):
+class SceneRead(SignedAssetModel):
     id: uuid.UUID
     project_id: uuid.UUID
     index: int
@@ -227,36 +238,45 @@ class SceneRead(BaseModel):
     source_segment_ids: list[int] = Field(default_factory=list)
     visual_prompt: str
     media_type: MediaType
-    media_url: str | None = None
+    stored_media_url: str | None = stored_key_field("media_url")
     generation_provider: str | None = None
     status: SceneStatus
     cost_usd: Decimal | None = None
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def media_url(self) -> str | None:
+        return presign(self.stored_media_url)
 
 
-class AudioTrackRead(BaseModel):
+class AudioTrackRead(SignedAssetModel):
     id: uuid.UUID
     project_id: uuid.UUID
     source: AudioTrackSource
     provider: str | None = None
     voice_id: str | None = None
-    file_url: str | None = None
+    stored_file_url: str | None = stored_key_field("file_url")
     word_timestamps: dict[str, Any] | list[Any] | None = None
     cost_usd: Decimal | None = None
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def file_url(self) -> str | None:
+        return presign(self.stored_file_url)
 
 
-class VideoAssemblyRead(BaseModel):
+class VideoAssemblyRead(SignedAssetModel):
     id: uuid.UUID
     project_id: uuid.UUID
     ffmpeg_job_id: str | None = None
-    output_url: str | None = None
+    stored_output_url: str | None = stored_key_field("output_url")
     status: AssemblyStatus
     render_config: dict[str, Any] | None = None
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def output_url(self) -> str | None:
+        return presign(self.stored_output_url)
 
 
 class TranscriptSegmentRead(BaseModel):
@@ -287,14 +307,17 @@ class JobSummaryRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ThumbnailRead(BaseModel):
+class ThumbnailRead(SignedAssetModel):
     id: uuid.UUID
     project_id: uuid.UUID
     source: str
-    file_url: str
+    stored_file_url: str = stored_key_field("file_url", required=True)
     cost_usd: Decimal | None = None
 
-    model_config = {"from_attributes": True}
+    @computed_field
+    @property
+    def file_url(self) -> str:
+        return presign(self.stored_file_url) or ""
 
 
 class DescriptionRead(BaseModel):

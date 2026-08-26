@@ -16,8 +16,7 @@ from app.core.generate_character import enqueue_character_task, reference_filena
 from app.models.character import Character
 from app.models.enums import CharacterStatus
 from app.models.style import Style
-from app.schemas.character import CharacterAssetRead, CharacterCreate, CharacterRead
-from app.schemas.style import StyleRead
+from app.schemas.character import CharacterCreate, CharacterRead
 from app.storage import StorageError, upload_fileobj
 
 router = APIRouter(prefix="/api/characters", tags=["characters"], dependencies=[require_owner])
@@ -91,17 +90,10 @@ def _require_style(db, style_id: UUID, *, must_be_active: bool) -> Style:
 
 
 def _to_read(row: Character, *, include_assets: bool) -> CharacterRead:
-    return CharacterRead(
-        id=row.id,
-        description_prompt=row.description_prompt,
-        style_id=row.style_id,
-        style=StyleRead.model_validate(row.style) if row.style is not None else None,
-        reference_image_url=row.reference_image_url,
-        base_image_url=row.base_image_url,
-        status=row.status,
-        created_at=row.created_at,
-        assets=[CharacterAssetRead.model_validate(asset) for asset in row.assets] if include_assets else [],
-    )
+    data = CharacterRead.model_validate(row)
+    if include_assets:
+        return data
+    return data.model_copy(update={"assets": []})
 
 
 def _detail_query(db, character_id: UUID) -> Character | None:

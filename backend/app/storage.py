@@ -153,6 +153,68 @@ def versioned_filename(stem: str, suffix: str = ".png") -> str:
 
 
 DOWNLOAD_URL_EXPIRES = 3600
+_CDN_HOSTS = frozenset({"cdn.mazting.studio"})
+
+
+def _host(url: str) -> str:
+    parsed = urlparse(url if "://" in url else f"https://{url}")
+    return (parsed.netloc or "").lower()
+
+
+def object_key_from_stored(value: str) -> str | None:
+    """Converte URL antiga (CDN / R2 / s3://) ou key relativa no object_key do bucket."""
+    text = unquote((value or "").strip())
+    if not text:
+        return None
+    text = text.split("?", 1)[0].split("#", 1)[0]
+    if "://" not in text and not text.startswith("//"):
+        return relative_object_key(text) or None
+
+    parsed = urlparse(text)
+    public_host = _host(settings.r2_public_base_url) if settings.r2_public_base_url else ""
+    endpoint_host = _host(settings.object_storage_endpoint) if settings.object_storage_endpoint else ""
+    ours = {host for host in (*_CDN_HOSTS, public_host, endpoint_host) if host}
+    if parsed.scheme == "s3":
+        return relative_object_key(unquote(parsed.path.lstrip("/"))) or None
+    host = parsed.netloc.lower()
+    if host not in ours and not host.endswith(".r2.cloudflarestorage.com"):
+        return None
+    return relative_object_key(unquote(parsed.path.lstrip("/"))) or None
+
+
+def generate_presigned_url(object_key: str, expires_in: int = DOWNLOAD_URL_EXPIRES) -> str:
+    """GET assinado no R2/S3. `object_key` é o caminho relativo no bucket."""
+    key = object_key_from_stored(object_key) or relative_object_key(object_key)
+    if not key:
+        raise StorageError("object_key vazio")
+    bucket = (settings.s3_bucket or "").strip()
+    if not bucket:
+        raise StorageError("S3_BUCKET não configurado")
+
+    def _sign() -> str:
+        return _client().generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=expires_in,
+        )
+
+    signed = _with_retry("generate_presigned_url", _sign)
+    if not signed:
+        raise StorageError("não foi possível assinar a URL de download")
+    return signed
+
+
+def signed_asset_url(stored: str | None, expires_in: int = DOWNLOAD_URL_EXPIRES) -> str | None:
+    """URL temporária para a API. Keys/CDN viram presign; HTTP externo permanece."""
+    text = (stored or "").strip()
+    if not text:
+        return None
+    key = object_key_from_stored(text)
+    if key:
+        return generate_presigned_url(key, expires_in=expires_in)
+    if text.startswith(("http://", "https://")):
+        return text
+    return generate_presigned_url(text, expires_in=expires_in)
 
 
 def public_url(key: str) -> str:
@@ -174,90 +236,30 @@ def download_url(
     content_type: str | None = None,
     expires_in: int = DOWNLOAD_URL_EXPIRES,
 ) -> str:
-    """HTTP para preview/download: CDN público se existir, senão GET assinado."""
+    """HTTP para preview/download: sempre GET assinado (bucket privado)."""
+    del filename, content_type
     text = (url or "").strip()
     if not text:
         raise StorageError("url vazia")
-    public = (settings.r2_public_base_url or "").rstrip("/")
-    if public and (text == public or text.startswith(public + "/")):
+    key = object_key_from_stored(text)
+    if key:
+        return generate_presigned_url(key, expires_in=expires_in)
+    if text.startswith(("http://", "https://")):
         return text
-    try:
-        bucket, key = _parse_location(text)
-    except StorageError:
-        if text.startswith(("http://", "https://")):
-            return text
-        raise
-    if public:
-        return public_url(key)
-    return _presigned_get(
-        bucket,
-        key,
-        filename=filename or Path(key).name,
-        content_type=content_type,
-        expires_in=expires_in,
-    )
-
-
-def _presigned_get(
-    bucket: str,
-    key: str,
-    *,
-    filename: str | None,
-    content_type: str | None,
-    expires_in: int,
-) -> str:
-    params: dict = {"Bucket": bucket, "Key": key}
-    if content_type:
-        params["ResponseContentType"] = content_type
-    safe = Path(str(filename or "")).name.replace('"', "").replace("\r", "").replace("\n", "")
-    if safe:
-        params["ResponseContentDisposition"] = f'inline; filename="{safe}"'
-
-    def _sign() -> str:
-        return _client().generate_presigned_url(
-            "get_object",
-            Params=params,
-            ExpiresIn=expires_in,
-        )
-
-    signed = _with_retry("generate_presigned_url", _sign)
-    if not signed:
-        raise StorageError("não foi possível assinar a URL de download")
-    return signed
+    raise StorageError("object_key vazio")
 
 
 def _parse_location(url: str) -> tuple[str, str]:
-    """Extrai (bucket, key) de uma URL devolvida por upload_file ou de um s3://."""
-    parsed = urlparse(url)
-    if parsed.scheme == "s3":
-        bucket = parsed.netloc
-        key = unquote(parsed.path.lstrip("/"))
-        if not bucket or not key:
-            raise StorageError(f"URL s3 inválida: {url}")
+    """Extrai (bucket, key) de object_key, URL pública antiga, endpoint R2 ou s3://."""
+    text = (url or "").strip()
+    if not text:
+        raise StorageError("url vazia")
+    key = object_key_from_stored(text)
+    if key:
+        bucket = (settings.s3_bucket or "").strip()
+        if not bucket:
+            raise StorageError("S3_BUCKET não configurado")
         return bucket, key
-
-    path = unquote(parsed.path.lstrip("/"))
-    public = (settings.r2_public_base_url or "").rstrip("/")
-    if public and url.startswith(public + "/"):
-        key = relative_object_key(url[len(public) + 1 :])
-        if not key:
-            raise StorageError(f"URL pública sem key: {url}")
-        return settings.s3_bucket, key
-
-    endpoint = (settings.object_storage_endpoint or "").rstrip("/")
-    if endpoint and url.startswith(endpoint + "/"):
-        rest = url[len(endpoint) + 1 :]
-        bucket, _, key = rest.partition("/")
-        if not bucket or not key:
-            raise StorageError(f"URL de endpoint sem bucket/key: {url}")
-        return bucket, key
-
-    # path-style: /bucket/key  |  virtual-hosted: host começa com bucket.
-    if path and "/" in path:
-        bucket, _, key = path.partition("/")
-        if bucket and key:
-            return bucket, key
-
     raise StorageError(f"não foi possível extrair bucket/key de {url}")
 
 
@@ -268,7 +270,7 @@ def upload_fileobj(
     *,
     content_type: str | None = None,
 ) -> str:
-    """Envia um file-like para `{project_id}/{filename}` e devolve a URL pública (ou s3)."""
+    """Envia um file-like para `{project_id}/{filename}` e devolve o object_key."""
     key = object_key(project_id, filename)
     guessed, _ = mimetypes.guess_type(filename)
     media_type = content_type or guessed
@@ -290,11 +292,11 @@ def upload_fileobj(
         except (OSError, AttributeError):
             pass
     _with_retry("upload_fileobj", _put)
-    return public_url(key)
+    return key
 
 
 def upload_file(local_path: str, project_id: str, filename: str) -> str:
-    """Envia um arquivo local para `{project_id}/{filename}` e devolve a URL pública (ou s3)."""
+    """Envia um arquivo local para `{project_id}/{filename}` e devolve o object_key."""
     source = Path(local_path)
     if not source.is_file():
         raise StorageError(f"arquivo local não encontrado: {local_path}")
@@ -314,7 +316,7 @@ def upload_file(local_path: str, project_id: str, filename: str) -> str:
         _client().upload_file(**kwargs)
 
     _with_retry("upload_file", _put)
-    return public_url(key)
+    return key
 
 
 def object_exists(project_id: str, filename: str) -> bool:

@@ -54,9 +54,9 @@ def clip_output_name(spec: Any) -> str:
 
 
 def clip_storage_url(project_id: str, filename: str) -> str:
-    from app.storage import object_key, public_url
+    from app.storage import object_key
 
-    return public_url(object_key(project_id, filename))
+    return object_key(project_id, filename)
 
 
 def clip_cache_entry(spec: SceneClipSpec, ken_burns: bool, url: str = "") -> dict[str, Any]:
