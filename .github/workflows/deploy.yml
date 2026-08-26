@@ -1,0 +1,66 @@
+# Deploy automático na VPS ao dar push em main.
+#
+# Secrets obrigatórios em Settings → Secrets and variables → Actions:
+#   VPS_HOST      — hostname ou IP da VPS
+#   VPS_USER      — usuário SSH (com acesso a /opt/scenecraft e ao Docker)
+#   VPS_SSH_KEY   — chave privada correspondente (incluindo BEGIN/END)
+# Sem esses secrets o workflow não consegue conectar e o job falha.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy na VPS
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Recusar pull inconsistente na VPS
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 2m
+          script: |
+            set -eu
+            cd /opt/scenecraft
+            git fetch origin
+            current_branch="$(git rev-parse --abbrev-ref HEAD)"
+            if [ "$current_branch" != "main" ]; then
+              echo "Deploy abortado: a VPS não está na branch main (está em '${current_branch}'). Resolva manualmente via SSH."
+              exit 1
+            fi
+            if [ -n "$(git status --porcelain)" ]; then
+              echo "Deploy abortado: há mudanças locais em /opt/scenecraft (git pull teria conflito). Resolva manualmente via SSH."
+              git status
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "Deploy abortado: a branch na VPS divergiu de origin/main (git pull não seria fast-forward). Resolva manualmente via SSH."
+              echo "VPS:         $(git rev-parse --short HEAD)"
+              echo "origin/main: $(git rev-parse --short origin/main)"
+              exit 1
+            fi
+            echo "VPS pronta para fast-forward: $(git rev-parse --short HEAD) -> $(git rev-parse --short origin/main)"
+
+      - name: git pull, rebuild e prune
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -eu
+            cd /opt/scenecraft
+            git pull --ff-only origin main
+            docker compose -f docker-compose.prod.yml up -d --build
+            docker image prune -f
