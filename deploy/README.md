@@ -155,12 +155,16 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-O ingest de YouTube depende do **yt-dlp**. O YouTube trata downloaders como scrapers e muda as defesas com frequência (`nsig`, PO Token, TLS fingerprint, IP de VPS). Depois de um `poetry update yt-dlp` (ou se os logs mostrarem `nsig extraction failed` / `Requested format is not available` / `HTTP Error 403: Forbidden`), reconstrua **sem cache** para não reaproveitar a camada do pip. Um 403 com vídeo público não é link privado: é bloqueio anti-bot neste servidor — pode exigir outra cascata de `player_client`, impersonation (`curl-cffi`) ou PO Token, além da atualização mensal do yt-dlp.
+O ingest de YouTube depende do **yt-dlp** com **Deno no PATH** (binário instalado na imagem) e `yt-dlp-ejs` para o nsig. Sem Deno, o yt-dlp só usa clientes sem JS. Depois de um `poetry update yt-dlp` (ou se os logs mostrarem `nsig extraction failed` / `Requested format is not available` / `HTTP Error 403: Forbidden`), reconstrua **sem cache**:
 
 ```bash
 docker compose -f docker-compose.prod.yml build --no-cache api worker
 docker compose -f docker-compose.prod.yml up -d api worker
+docker compose -f docker-compose.prod.yml exec worker deno --version
+docker compose -f docker-compose.prod.yml exec worker yt-dlp -v --simulate -f bestaudio --no-playlist "https://www.youtube.com/watch?v=jNQXAC9IVRw"
 ```
+
+Um 403 com vídeo público e Deno no PATH é limitação conhecida (o client `web` ainda pode exigir GVS PO Token / SABR). Use **upload direto do arquivo**. Não force `player_client` (`android_vr`/`tv`); o padrão do yt-dlp (`visionos,web`) já escolhe os clients com menos PO Token quando o runtime JS está presente.
 
 ## 7. Atalho: script
 

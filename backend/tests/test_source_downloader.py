@@ -4,7 +4,6 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.source_downloader import (
-    YOUTUBE_PLAYER_CLIENTS,
     YoutubeDownloadError,
     classify_youtube_error,
     download_from_youtube,
@@ -73,7 +72,7 @@ def test_download_from_youtube_writes_mp3(monkeypatch, tmp_path):
     assert path.read_bytes() == b"ID3"
 
 
-def test_download_from_youtube_uses_player_clients_and_impersonate(monkeypatch, tmp_path):
+def test_download_from_youtube_does_not_override_player_clients(monkeypatch, tmp_path):
     seen: list[dict] = []
 
     class CaptureYDL(FakeYDL):
@@ -85,7 +84,8 @@ def test_download_from_youtube_uses_player_clients_and_impersonate(monkeypatch, 
     download_from_youtube("https://youtu.be/abc123", dest_dir=tmp_path)
     assert seen, "YoutubeDL should be constructed once"
     opts = seen[0]
-    assert opts["extractor_args"]["youtube"]["player_client"] == list(YOUTUBE_PLAYER_CLIENTS)
+    youtube_args = (opts.get("extractor_args") or {}).get("youtube") or {}
+    assert "player_client" not in youtube_args
     assert str(opts["impersonate"]).startswith("chrome")
 
 

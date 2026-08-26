@@ -138,13 +138,23 @@ docker compose down
 
 Não há Postgres neste arquivo: o banco é o projeto Supabase configurado no `.env`.
 
-O ingest de YouTube usa **yt-dlp**. O YouTube trata downloaders como scrapers e muda as defesas com frequência (`nsig`, exigência de PO Token, fingerprint de TLS, bloqueio de IP de VPS). Isso **não é um bug pontual** — é manutenção recorrente, no mesmo espírito de atualizar o yt-dlp periodicamente. Quando o log mostrar `HTTP Error 403: Forbidden` (vídeo público, extração barrada no servidor), o ajuste costuma ser: nova versão do yt-dlp, outra cascata de `player_client` em `source_downloader.py`, impersonation via `curl-cffi`, ou um PO Token provider. Atualize `yt-dlp` no `backend/pyproject.toml` / `backend/poetry.lock` **pelo menos uma vez por mês** (`cd backend && poetry update yt-dlp`) e reconstrua `api`/`worker` **sem cache** dessa camada:
+O ingest de YouTube usa **yt-dlp**. O YouTube trata downloaders como scrapers e muda as defesas com frequência (`nsig`, PO Token, fingerprint de TLS, IP de VPS). Isso **não é um bug pontual**. A extração precisa de um runtime JS: a imagem do backend instala o **Deno** no PATH e o pacote `yt-dlp-ejs`. Sem Deno, o yt-dlp só usa clientes sem JS. Não force `player_client` — o padrão (`visionos,web`) é o que minimiza PO Token. `visionos` costuma entregar áudio sem token; o client `web`, mesmo com Deno, ainda pode cair em SABR / GVS PO Token.
+
+Atualize `yt-dlp` no `backend/pyproject.toml` / `backend/poetry.lock` **pelo menos uma vez por mês** (`cd backend && poetry update yt-dlp`) e reconstrua `api`/`worker` **sem cache**:
 
 ```bash
 docker compose build --no-cache api worker
 ```
 
-Em produção, o mesmo vale com `docker compose -f docker-compose.prod.yml build --no-cache api worker`. A partir de 2025/2026 o nsig também exige o extra `yt-dlp-ejs` e um runtime JS; o fingerprint TLS usa `curl-cffi` (impersonate Chrome). Tudo isso entra via `yt-dlp[default,deno,curl-cffi]`. Se o log mostrar `nsig extraction failed` / `Requested format is not available` / `Only images are available`, a versão do yt-dlp (ou o runtime JS) está desatualizada. Se mostrar `HTTP Error 403: Forbidden` / PO Token, o YouTube bloqueou este servidor — tente de novo mais tarde ou use upload direto do arquivo.
+Em produção: `docker compose -f docker-compose.prod.yml build --no-cache api worker`. Depois do rebuild, confira o runtime e um download de teste (vídeo curto público):
+
+```bash
+docker compose exec worker deno --version
+docker compose exec worker python -c "import yt_dlp_ejs, shutil; print(yt_dlp_ejs.__file__); print(shutil.which('deno'))"
+docker compose exec worker yt-dlp -v --simulate -f bestaudio --no-playlist "https://www.youtube.com/watch?v=jNQXAC9IVRw"
+```
+
+No log, espere `JS runtimes: deno-…` e formatos extraídos (em geral via `visionos`). Se aparecer `HTTP Error 403` / `GVS PO Token` **com Deno no PATH**, o YouTube bloqueou este servidor — limitação conhecida. O caminho confiável é o **upload direto do arquivo**. `nsig extraction failed` / `Requested format is not available` costuma ser yt-dlp ou Deno desatualizados.
 
 ## Variáveis de ambiente
 

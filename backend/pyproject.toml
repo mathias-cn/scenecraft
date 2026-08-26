@@ -19,9 +19,10 @@ httpx = "^0.27.2"
 boto3 = "^1.35.0"
 alembic = "^1.14.0"
 openai = "^1.51.0"
-# YouTube quebra nsig / PO Token / TLS fingerprint com frequência: atualize mensalmente.
-# nsig: yt-dlp-ejs + Deno. Fingerprint TLS: extra curl-cffi (impersonate Chrome).
+# YouTube quebra nsig com frequência: atualize yt-dlp mensalmente e mantenha Deno no PATH.
+# yt-dlp-ejs resolve nsig no client web; o extra deno não substitui o binário no container.
 yt-dlp = { extras = ["default", "deno", "curl-cffi"], version = ">=2026.8.19" }
+yt-dlp-ejs = ">=0.8.0"
 pydub = "^0.25.1"
 pyjwt = {extras = ["crypto"], version = "^2.13.0"}
 

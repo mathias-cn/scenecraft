@@ -2,16 +2,21 @@
 
 O YouTube trata downloaders como scrapers e muda as defesas com frequência
 (nsig, PO Token, fingerprint de TLS, bloqueio de IP de VPS). Isso não é um
-bug pontual do SceneCraft: exige manutenção recorrente — atualizar `yt-dlp`,
-retocar `player_client` / impersonation, e às vezes um PO Token provider.
-Atualize `yt-dlp` no `pyproject.toml` / `poetry.lock` pelo menos uma vez por
-mês e reconstrua a imagem do backend sem cache dessa camada. Versões recentes
-também precisam de `yt-dlp-ejs`, Deno e `curl-cffi` (impersonate Chrome).
+bug pontual: atualize `yt-dlp` mensalmente e mantenha o **Deno no PATH**
+(a imagem Docker instala o binário oficial) para o `yt-dlp-ejs` resolver o
+nsig quando o client `web` entra em cena. Não force `player_client` — o
+padrão do yt-dlp (`visionos,web` com JS; só `visionos` sem Deno) é o que
+minimiza PO Token. `visionos` costuma entregar áudio sem token; `web` ainda
+pode exigir GVS PO Token / SABR mesmo com Deno.
+
+Se a extração falhar com 403/PO Token, use upload direto do arquivo. Não há
+contorno estável além do que o próprio yt-dlp já faz com o runtime JS presente.
 """
 
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -32,14 +37,7 @@ AUDIO_CODECS = ("mp3", "wav")
 
 logger = logging.getLogger(__name__)
 
-# Cascata de InnerTube clients (yt-dlp 2026.8.19). Ordem: menos dependência de
-# PO Token primeiro. `android_vr` ainda existe, mas desde 2026.08.17 o YouTube
-# responde 403 em todos os formatos desse client — por isso vai por último.
-# Se o 403 voltar, o próximo ajuste costuma ser esta lista, um PO Token
-# provider, ou o alvo de impersonate (ver `yt-dlp --help` / INNERTUBE_CLIENTS).
-YOUTUBE_PLAYER_CLIENTS = ("tv", "web_embedded", "web", "android_vr")
-
-# Sintomas clássicos de yt-dlp desatualizado (YouTube mudou o nsig).
+# Sintomas clássicos de yt-dlp desatualizado (YouTube mudou o nsig) ou Deno ausente.
 _EXTRACTOR_NEEDLES = (
     "nsig extraction failed",
     "requested format is not available",
@@ -129,6 +127,7 @@ def download_from_youtube(url: str, dest_dir: str | Path | None = None) -> Path:
         ) from exc
 
     last_error: BaseException | None = None
+    _warn_if_deno_missing()
     for codec in AUDIO_CODECS:
         try:
             path = _extract_youtube_audio(yt_dlp, cleaned, dest, codec)
@@ -251,6 +250,15 @@ def _chrome_impersonate_target():
         return "chrome"
 
 
+def _warn_if_deno_missing() -> None:
+    if shutil.which("deno"):
+        return
+    logger.warning(
+        "deno não está no PATH; o yt-dlp não resolve nsig e cai em clientes sem JS "
+        "(PO Token / 403). Instale o binário na imagem e reconstrua, ou use upload direto."
+    )
+
+
 def _youtube_dl_opts(dest: Path, codec: str, *, impersonate: bool) -> dict:
     opts: dict = {
         "format": "bestaudio/best",
@@ -259,7 +267,6 @@ def _youtube_dl_opts(dest: Path, codec: str, *, impersonate: bool) -> dict:
         "quiet": True,
         "noprogress": True,
         "overwrites": True,
-        "extractor_args": {"youtube": {"player_client": list(YOUTUBE_PLAYER_CLIENTS)}},
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
