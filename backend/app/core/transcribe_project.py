@@ -56,6 +56,7 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
 
         with tempfile.TemporaryDirectory(prefix="scenecraft-transcribe-") as tmp:
             audio_path = load_audio(project, Path(tmp))
+            # Persiste no R2 (audio_tracks.source=original) antes do tmp sumir.
             track = persist_original_audio(session, project, audio_path)
             segments = transcription_client.transcribe(str(audio_path), language="auto")
             record_whisper_cost(track, audio_path, segments)

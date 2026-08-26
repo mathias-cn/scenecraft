@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.core.source_downloader import SourceDownloadError, load_audio, load_uploaded_source
-from app.models.enums import ProjectStage, SourceType
+from app.models.enums import AudioTrackSource, ProjectStage, SourceType
 from app.providers.transcription_client import Segment, TranscriptionError
 from app.core.transcribe_project import transcribe_project
 
@@ -234,6 +234,79 @@ def test_transcribe_project_skips_translation_for_original_target(monkeypatch, t
     assert result["translated"] is False
     assert called == []
     assert db.added[0].text_translated is None
+
+
+def test_transcribe_project_uploads_original_before_temp_cleanup(monkeypatch, tmp_path):
+    audio = tmp_path / "youtube_audio.mp3"
+    audio.write_bytes(b"ID3")
+    project = _project(
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/abc",
+        audio_tracks=[],
+    )
+    db = RecordingDB(project)
+    persisted: list[tuple] = []
+
+    def fake_persist(session, proj, path):
+        local = Path(path)
+        assert local.is_file(), "upload deve ocorrer enquanto o tmp ainda existe"
+        persisted.append((session, proj.id, local))
+        return SimpleNamespace(cost_usd=None, file_url=f"{proj.id}/original.mp3")
+
+    monkeypatch.setattr("app.core.transcribe_project.persist_original_audio", fake_persist)
+    monkeypatch.setattr("app.core.transcribe_project.load_audio", lambda *_a: audio)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: [Segment(start_ms=0, end_ms=10, text="hello", language="en")],
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    transcribe_project(project.id, db=db)
+
+    assert len(persisted) == 1
+    assert persisted[0][0] is db
+    assert persisted[0][1] == project.id
+    assert persisted[0][2] == audio
+
+
+def test_persist_original_audio_uploads_object_key_and_records_track(monkeypatch, tmp_path):
+    from app.core.project_audio import persist_original_audio
+
+    audio = tmp_path / "youtube_audio.wav"
+    audio.write_bytes(b"RIFF")
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[])
+    added: list = []
+    session = SimpleNamespace(add=added.append)
+    uploads: list[tuple[str, str, str]] = []
+
+    def fake_upload(local_path, project_id, filename):
+        uploads.append((local_path, project_id, filename))
+        return f"{project_id}/{filename}"
+
+    monkeypatch.setattr("app.storage.upload_file", fake_upload)
+    track = persist_original_audio(session, project, audio)
+
+    assert uploads == [(str(audio), str(project.id), "original.wav")]
+    assert track.source is AudioTrackSource.ORIGINAL
+    assert track.file_url == f"{project.id}/original.wav"
+    assert added == [track]
+    assert project.audio_tracks == [track]
+
+
+def test_persist_original_audio_reuses_existing_original_track(monkeypatch, tmp_path):
+    from app.core.project_audio import persist_original_audio
+
+    existing = SimpleNamespace(
+        source=AudioTrackSource.ORIGINAL,
+        file_url=f"{uuid4()}/original.mp3",
+    )
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[existing])
+    session = SimpleNamespace(add=lambda *_a: (_ for _ in ()).throw(AssertionError("não deve recriar")))
+    monkeypatch.setattr(
+        "app.storage.upload_file",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve reenviar")),
+    )
+    assert persist_original_audio(session, project, tmp_path / "a.mp3") is existing
 
 
 def test_needs_translation_compares_language_codes():

@@ -72,7 +72,7 @@ def final_narration_track(project: Project) -> AudioTrack | None:
 
 
 def persist_original_audio(session: Session, project: Project, audio_path: str | Path) -> AudioTrack:
-    """Envia o áudio extraído na transcrição e grava audio_tracks.source=original."""
+    """Envia o áudio extraído na transcrição para o R2 e grava audio_tracks.source=original."""
     existing = original_audio_track(project)
     if existing is not None:
         return existing
@@ -80,11 +80,11 @@ def persist_original_audio(session: Session, project: Project, audio_path: str |
     suffix = path.suffix.lower() or ".mp3"
     from app.storage import upload_file
 
-    url = upload_file(str(path), str(project.id), f"original{suffix}")
+    object_key = upload_file(str(path), str(project.id), f"original{suffix}")
     track = AudioTrack(
         project_id=project.id,
         source=AudioTrackSource.ORIGINAL,
-        file_url=url,
+        file_url=object_key,
         provider=None,
     )
     session.add(track)
