@@ -16,7 +16,6 @@ class JobQueue(str, enum.Enum):
     RENDER = "render"
     THUMBNAIL = "thumbnail"
     DESCRIPTION = "description"
-    UPLOAD = "upload"
 
 
 @dataclass(frozen=True)
@@ -34,7 +33,6 @@ PIPELINE: tuple[QueueStep, ...] = (
     QueueStep(JobQueue.RENDER, "scenecraft.render", ProjectStage.RENDERING),
     QueueStep(JobQueue.THUMBNAIL, "scenecraft.thumbnail", ProjectStage.THUMBNAIL_STAGE),
     QueueStep(JobQueue.DESCRIPTION, "scenecraft.description", ProjectStage.DESCRIPTION_STAGE),
-    QueueStep(JobQueue.UPLOAD, "scenecraft.upload", ProjectStage.UPLOADING),
 )
 
 QUEUE_NAMES: tuple[str, ...] = tuple(step.queue.value for step in PIPELINE)
@@ -47,7 +45,6 @@ TASK_MODULES: tuple[str, ...] = (
     "app.tasks.render",
     "app.tasks.thumbnail",
     "app.tasks.description",
-    "app.tasks.upload",
 )
 
 STAGE_TO_STEP: dict[ProjectStage, QueueStep] = {step.stage: step for step in PIPELINE}

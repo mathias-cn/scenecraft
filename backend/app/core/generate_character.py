@@ -17,6 +17,7 @@ from app.models.enums import CharacterAssetType, CharacterStatus
 from app.models.style import Style
 from app.providers.image_provider import DEFAULT_IMAGE_QUALITY, DEFAULT_OPENAI_MODEL
 from app.providers.openai_image_client import OpenAIImageClient
+from app.providers.pricing import add_cost
 
 CHARACTER_IMAGE_SIZE = "1024x1536"
 BASE_POSE_INSTRUCTION = "corpo inteiro, fundo neutro, pose neutra"
@@ -131,8 +132,12 @@ def generate_character_base_image(
                     size=CHARACTER_IMAGE_SIZE,
                 )
 
+        add_cost(character, result.cost_usd)
+        session.flush()
         session.refresh(character)
         if character.status != CharacterStatus.PENDING_APPROVAL:
+            if owns:
+                session.commit()
             return {"character_id": str(character.id), "skipped": True, "reason": "status_changed"}
 
         uploader = upload or _default_upload
@@ -279,6 +284,8 @@ def generate_character_asset(
                 image_url=url,
             )
             session.add(asset)
+        add_cost(asset, result.cost_usd)
+        add_cost(character, result.cost_usd)
         session.flush()
         if owns:
             session.commit()

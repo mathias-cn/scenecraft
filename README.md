@@ -117,7 +117,7 @@ docker compose down
 ## Serviços no `docker-compose.yml`
 
 - **api** — FastAPI (`uvicorn`), porta `8000` (roda Alembic no Supabase antes de subir)
-- **worker** — um processo Celery por fila (`transcribe`, `scene_planning`, `media_gen`, `audio_gen`, `render`, `thumbnail`, `description`, `upload`), cada um com concorrência via env
+- **worker** — um processo Celery por fila (`transcribe`, `scene_planning`, `media_gen`, `audio_gen`, `render`, `thumbnail`, `description`), cada um com concorrência via env
 - **redis** — broker e backend de resultados do Celery
 - **frontend** — Next.js 14, porta `3000`
 
@@ -139,11 +139,12 @@ Veja `.env.example`. As principais:
 | `HIGGSFIELD_API_KEY` | Geração de vídeo |
 | `ELEVENLABS_API_KEY` | TTS / narração |
 | `OPENAI_API_KEY` | Whisper, LLM e imagens |
-| `DAILY_COST_LIMIT_USD` | Teto de gasto estimado por dia (São Paulo); vazio/0 = sem limite |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | S3 ou R2 |
 | `R2_ACCOUNT_ID` | Conta Cloudflare R2 |
 
 Se `S3_ENDPOINT_URL` estiver vazio, o storage usa AWS S3. Para R2, use `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`.
+
+O teto diário de custo estimado fica na tabela `app_settings` (não em variável de ambiente) e pode ser editado em **Configurações**, sem redeploy.
 
 ## Desenvolvimento local (sem Docker para o app)
 

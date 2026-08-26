@@ -42,7 +42,6 @@ celery_app.conf.update(
         "scenecraft.generate_thumbnail": {"queue": "thumbnail"},
         "scenecraft.description": {"queue": "description"},
         "scenecraft.generate_description": {"queue": "description"},
-        "scenecraft.upload": {"queue": "upload"},
         "scenecraft.generate_character_base_image": {"queue": "media_gen"},
         "scenecraft.generate_character_set": {"queue": "media_gen"},
         "scenecraft.generate_character_asset": {"queue": "media_gen"},
@@ -58,4 +57,3 @@ import app.tasks.render  # noqa: E402,F401
 import app.tasks.scene_planning  # noqa: E402,F401
 import app.tasks.thumbnail  # noqa: E402,F401
 import app.tasks.transcribe  # noqa: E402,F401
-import app.tasks.upload  # noqa: E402,F401

@@ -42,9 +42,14 @@ export function DailyCostBanner() {
           Gasto de hoje: {today} de {limit} ({budget.timezone}). Novos jobs pagos (LLM, imagens,
           TTS) estão pausados até o próximo dia.
         </p>
-        <Link href="/costs" className="mt-2 inline-block text-sm text-brass-400 hover:text-brass-300">
-          Ver custos
-        </Link>
+        <div className="mt-2 flex gap-3 text-sm">
+          <Link href="/costs" className="text-brass-400 hover:text-brass-300">
+            Ver custos
+          </Link>
+          <Link href="/settings" className="text-brass-400 hover:text-brass-300">
+            Ajustar teto
+          </Link>
+        </div>
       </div>
     );
   }
@@ -54,6 +59,9 @@ export function DailyCostBanner() {
       Hoje {today} / {limit}
       <Link href="/costs" className="ml-2 text-white/45 hover:text-brass-400">
         custos
+      </Link>
+      <Link href="/settings" className="ml-2 text-white/45 hover:text-brass-400">
+        teto
       </Link>
     </p>
   );

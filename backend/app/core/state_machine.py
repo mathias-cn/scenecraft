@@ -45,7 +45,7 @@ FLAG_ALIASES: dict[str, tuple[str, ...]] = {
     "auto_media": ("auto_media", "auto_media_gen"),
 }
 
-TERMINAL_STAGES = frozenset({ProjectStage.COMPLETED, ProjectStage.PUBLISHED, ProjectStage.FAILED})
+TERMINAL_STAGES = frozenset({ProjectStage.COMPLETED, ProjectStage.FAILED})
 
 
 class IllegalTransition(Exception):
@@ -268,7 +268,7 @@ def retry_stage(
     try:
         project = _load_project(session, project_id)
         current = parse_stage(project.current_stage)
-        if current is ProjectStage.PUBLISHED or current is ProjectStage.COMPLETED or project.status is ProjectStatus.COMPLETED:
+        if current is ProjectStage.COMPLETED or project.status is ProjectStatus.COMPLETED:
             raise IllegalTransition("projeto já concluído")
         if project.status is ProjectStatus.CANCELLED:
             raise IllegalTransition("projeto cancelado")
@@ -348,7 +348,7 @@ def advance_stage(
         project.current_stage = nxt
         project.updated_at = _now()
 
-        if nxt is ProjectStage.COMPLETED or nxt is ProjectStage.PUBLISHED:
+        if nxt is ProjectStage.COMPLETED:
             project.status = ProjectStatus.COMPLETED
             session.commit()
             return AdvanceResult(
@@ -416,9 +416,6 @@ def advance_stage(
 _PACK_STAGES = frozenset(
     {
         ProjectStage.DESCRIPTION_STAGE,
-        ProjectStage.READY_TO_PUBLISH,
-        ProjectStage.UPLOADING,
-        ProjectStage.PUBLISHED,
         ProjectStage.COMPLETED,
     }
 )

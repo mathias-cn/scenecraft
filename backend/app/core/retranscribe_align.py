@@ -18,7 +18,7 @@ from app.core.project_audio import (
 )
 from app.core.provider_limiter import provider_semaphore
 from app.core.state_machine import IllegalTransition, ProjectNotFound, advance_stage, parse_stage
-from app.core.transcribe_project import language_code
+from app.core.transcribe_project import language_code, record_whisper_cost
 from app.models.enums import ProjectStage
 from app.models.project import Project
 from app.providers import transcription_client
@@ -54,6 +54,7 @@ def retranscribe_and_align(project_id: str | UUID, db: Session | None = None) ->
             audio_path = _download_audio(track.file_url, str(local))
             with provider_semaphore.hold("openai"):
                 segments = transcription_client.transcribe(str(audio_path), language="auto")
+            record_whisper_cost(track, audio_path, segments)
 
         if not segments:
             raise TranscriptionError("re-transcrição vazia")

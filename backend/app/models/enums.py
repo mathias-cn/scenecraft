@@ -21,9 +21,6 @@ class ProjectStage(str, enum.Enum):
     RENDER_REVIEW = "render_review"
     THUMBNAIL_STAGE = "thumbnail_stage"
     DESCRIPTION_STAGE = "description_stage"
-    READY_TO_PUBLISH = "ready_to_publish"
-    UPLOADING = "uploading"
-    PUBLISHED = "published"
     COMPLETED = "completed"
     FAILED = "failed"
 
@@ -72,13 +69,6 @@ class ThumbnailSource(str, enum.Enum):
 class DescriptionSource(str, enum.Enum):
     GENERATED = "generated"
     MANUAL = "manual"
-
-
-class YoutubeUploadStatus(str, enum.Enum):
-    PENDING = "pending"
-    UPLOADING = "uploading"
-    PUBLISHED = "published"
-    FAILED = "failed"
 
 
 class JobStatus(str, enum.Enum):

@@ -227,7 +227,6 @@ class SceneRead(BaseModel):
     source_segment_ids: list[int] = Field(default_factory=list)
     visual_prompt: str
     media_type: MediaType
-    style: str | None = None
     media_url: str | None = None
     generation_provider: str | None = None
     status: SceneStatus
@@ -356,3 +355,5 @@ class ProjectCostRead(BaseModel):
     descriptions_usd: Decimal
     thumbnails_usd: Decimal
     llm_usd: Decimal
+    characters_usd: Decimal
+    titles_usd: Decimal

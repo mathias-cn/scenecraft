@@ -5,12 +5,14 @@ from uuid import uuid4
 from app.core.project_cost import project_cost_breakdown
 from app.providers.pricing import (
     HIGGSFIELD_IMAGE_USD,
+    WHISPER_USD_PER_MINUTE,
     add_project_llm_cost,
     add_usd,
     as_usd,
     estimate_elevenlabs_cost_usd,
     estimate_higgsfield_cost_usd,
     estimate_llm_cost_usd,
+    estimate_whisper_cost_usd,
     unpack_priced_text,
 )
 
@@ -25,6 +27,12 @@ def test_estimate_llm_cost_uses_published_rates():
     assert cost == Decimal("0.750000")
     nano = estimate_llm_cost_usd("gpt-5-nano", prompt_tokens=1_000_000, completion_tokens=0)
     assert nano == Decimal("0.050000")
+
+
+def test_estimate_whisper_cost_from_audio_duration():
+    assert estimate_whisper_cost_usd(duration_ms=60_000) == WHISPER_USD_PER_MINUTE
+    assert estimate_whisper_cost_usd(duration_ms=30_000) == as_usd(WHISPER_USD_PER_MINUTE / 2)
+    assert estimate_whisper_cost_usd(duration_ms=0) == Decimal("0")
 
 
 def test_estimate_elevenlabs_cost_from_character_count():
@@ -67,7 +75,54 @@ def test_project_cost_breakdown_sums_all_buckets():
     assert payload["descriptions_usd"] == Decimal("0.002000")
     assert payload["thumbnails_usd"] == Decimal("0.041000")
     assert payload["llm_usd"] == Decimal("0.010000")
+    assert payload["characters_usd"] == Decimal("0")
+    assert payload["titles_usd"] == Decimal("0")
     assert payload["total_usd"] == add_usd("0.041", "0.003", "0.002", "0.041", "0.010")
+
+
+def test_project_cost_breakdown_includes_linked_character():
+    pid = uuid4()
+    project = SimpleNamespace(
+        id=pid,
+        llm_cost_usd=Decimal("0"),
+        scenes=[],
+        audio_tracks=[],
+        descriptions=[],
+        thumbnails=[],
+    )
+    payload = project_cost_breakdown(project, character=SimpleNamespace(cost_usd=Decimal("0.080000")))
+    assert payload["characters_usd"] == Decimal("0.080000")
+    assert payload["total_usd"] == Decimal("0.080000")
+
+
+def test_project_cost_breakdown_includes_title_suggestions():
+    pid = uuid4()
+    project = SimpleNamespace(
+        id=pid,
+        llm_cost_usd=Decimal("0"),
+        scenes=[],
+        audio_tracks=[],
+        descriptions=[],
+        thumbnails=[],
+    )
+    payload = project_cost_breakdown(project, titles_usd=Decimal("0.001250"))
+    assert payload["titles_usd"] == Decimal("0.001250")
+    assert payload["total_usd"] == Decimal("0.001250")
+
+
+def test_title_suggestions_cost_usd_sums_matching_draft():
+    from app.core.project_cost import title_suggestions_cost_usd
+
+    class FakeResult:
+        def scalar_one(self):
+            return Decimal("0.002500")
+
+    class FakeDB:
+        def execute(self, _stmt):
+            return FakeResult()
+
+    assert title_suggestions_cost_usd(FakeDB(), "Meu vídeo") == Decimal("0.002500")
+    assert title_suggestions_cost_usd(FakeDB(), "  ") == Decimal("0")
 
 
 def test_build_cost_series_pads_daily_and_monthly_windows():
@@ -111,6 +166,8 @@ def test_daily_cost_sql_unions_tables_and_groups_by_day():
     assert "descriptions" in sql
     assert "thumbnails" in sql
     assert "llm_cost_usd" in sql
+    assert "characters" in sql
+    assert "title_suggestions" in sql
 
 
 def test_load_cost_series_uses_grouped_query_rows():

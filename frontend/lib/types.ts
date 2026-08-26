@@ -14,9 +14,6 @@ export type ProjectStage =
   | "render_review"
   | "thumbnail_stage"
   | "description_stage"
-  | "ready_to_publish"
-  | "uploading"
-  | "published"
   | "completed"
   | "failed";
 

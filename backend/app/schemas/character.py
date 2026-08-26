@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
@@ -34,6 +35,7 @@ class CharacterAssetRead(BaseModel):
     character_id: uuid.UUID
     asset_type: CharacterAssetType
     image_url: str
+    cost_usd: Decimal | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -48,6 +50,7 @@ class CharacterRead(BaseModel):
     base_image_url: str | None
     status: CharacterStatus
     created_at: datetime
+    cost_usd: Decimal | None = None
     assets: list[CharacterAssetRead] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}

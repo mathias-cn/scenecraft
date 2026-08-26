@@ -18,7 +18,9 @@ export { ApiError } from "./api-client";
 export { getApiBaseUrl } from "./config";
 
 export function generateTitles(draftTitle: string) {
-  return apiPost<{ titles: string[] }>("/api/ai/generate-titles", { draft_title: draftTitle });
+  return apiPost<{ titles: string[]; cost_usd?: number | null }>("/api/ai/generate-titles", {
+    draft_title: draftTitle,
+  });
 }
 
 export function listProjects() {
@@ -120,6 +122,10 @@ export function getCostSeries() {
 
 export function getCostBudget() {
   return apiGet<CostBudget>("/api/costs/budget");
+}
+
+export function patchCostBudget(dailyLimitUsd: number | null) {
+  return apiPatch<CostBudget>("/api/costs/budget", { daily_limit_usd: dailyLimitUsd });
 }
 
 export function listStyles(active?: boolean) {

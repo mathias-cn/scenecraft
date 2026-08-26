@@ -80,7 +80,6 @@ def _scene_project(provider="openai"):
         media_url=None,
         media_type=MediaType.IMAGE,
         cost_usd=None,
-        style=None,
     )
     return project, scene
 

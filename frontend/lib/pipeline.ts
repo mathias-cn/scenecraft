@@ -34,7 +34,7 @@ export const PIPELINE_STEPS = [
   {
     id: "done",
     label: "Concluído",
-    stages: ["completed", "ready_to_publish", "uploading", "published"],
+    stages: ["completed"],
   },
 ] as const;
 
@@ -53,7 +53,7 @@ export function pipelineStepState(
   currentStage: ProjectStage,
   status: ProjectStatus,
 ): PipelineStepState {
-  if (status === "completed" || currentStage === "published" || currentStage === "completed") {
+  if (status === "completed" || currentStage === "completed") {
     return "complete";
   }
   const current = pipelineStepIndex(currentStage);

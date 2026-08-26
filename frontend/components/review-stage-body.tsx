@@ -127,8 +127,6 @@ export function reviewTitle(stage: ProjectStage): string {
       return "Thumbnail do vídeo";
     case "description_stage":
       return "Descrição do vídeo";
-    case "ready_to_publish":
-      return "Revisar publicação";
     default:
       return "Revisão manual";
   }
@@ -155,7 +153,6 @@ export function ReviewStageBody({ project }: ReviewBodyProps) {
     case "thumbnail_stage":
       return <ThumbnailReview project={project} />;
     case "description_stage":
-    case "ready_to_publish":
       return <DescriptionReview project={project} />;
     default:
       return <EmptyNote text="Nada para revisar neste estágio." />;

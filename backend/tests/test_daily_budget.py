@@ -21,7 +21,7 @@ def test_paid_stages_exclude_render():
 
 
 def test_assert_skips_query_when_limit_disabled(monkeypatch):
-    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda: None)
+    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda *_a, **_k: None)
 
     def boom(_db):
         raise AssertionError("não deve consultar o gasto do dia sem teto")
@@ -31,20 +31,20 @@ def test_assert_skips_query_when_limit_disabled(monkeypatch):
 
 
 def test_assert_skips_unpaid_stage_even_when_over_limit(monkeypatch):
-    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda: Decimal("1"))
+    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda *_a, **_k: Decimal("1"))
     monkeypatch.setattr("app.core.daily_budget.load_today_cost", lambda _db, **_k: Decimal("9"))
     assert_paid_job_allowed(SimpleNamespace(), ProjectStage.RENDERING)
 
 
 def test_assert_raises_when_today_meets_limit(monkeypatch):
-    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda: Decimal("1.00"))
+    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda *_a, **_k: Decimal("1.00"))
     monkeypatch.setattr("app.core.daily_budget.load_today_cost", lambda _db, **_k: Decimal("1.00"))
     with pytest.raises(DailyCostLimitReached, match="Limite diário"):
         assert_paid_job_allowed(SimpleNamespace(), ProjectStage.SCENE_PLANNING)
 
 
 def test_snapshot_marks_limit_reached(monkeypatch):
-    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda: Decimal("2.50"))
+    monkeypatch.setattr("app.core.daily_budget.configured_daily_limit_usd", lambda *_a, **_k: Decimal("2.50"))
     monkeypatch.setattr("app.core.daily_budget.load_today_cost", lambda _db, **_k: Decimal("3.00"))
     snap = daily_budget_snapshot(SimpleNamespace())
     assert snap["limit_reached"] is True

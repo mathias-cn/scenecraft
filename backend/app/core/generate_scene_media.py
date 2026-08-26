@@ -141,7 +141,6 @@ def generate_scene_media(
         scene.media_type = MediaType.IMAGE
         scene.cost_usd = Decimal(str(result.cost_usd))
         scene.status = SceneStatus.READY
-        scene.style = model
         session.flush()
         group = maybe_finish_media_group(session, project, scene, job_group_id=job_group_id)
         if owns:

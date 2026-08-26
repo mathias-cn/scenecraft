@@ -292,6 +292,7 @@ def test_generate_titles_returns_three_suggestions(monkeypatch):
     titles = generate_titles("Como eu automatizei meu canal")
     assert len(titles) == 3
     assert "automatizei" in titles[0].lower()
+    assert getattr(titles, "cost_usd") is not None
     assert "draft_title" in captured[0][1]
     assert captured[0][2] == "gpt-5-nano"
 

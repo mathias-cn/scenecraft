@@ -12,10 +12,12 @@ from sqlalchemy.orm import Session
 
 from app.core.state_machine import ProjectNotFound
 from app.models.audio_track import AudioTrack
+from app.models.character import Character
 from app.models.description import Description
 from app.models.project import Project
 from app.models.scene import Scene
 from app.models.thumbnail import Thumbnail
+from app.models.title_suggestion import TitleSuggestion
 from app.providers.pricing import add_usd, as_usd
 
 COST_TIMEZONE = "America/Sao_Paulo"
@@ -37,20 +39,47 @@ def _items_cost(items: Any) -> Any:
     return add_usd(*(getattr(item, "cost_usd", None) for item in (items or [])))
 
 
-def project_cost_breakdown(project: Any) -> dict[str, Any]:
+def title_suggestions_cost_usd(db: Session, draft_title: str | None) -> Any:
+    """Soma o gasto de sugestões de título geradas a partir do mesmo rascunho do projeto."""
+    text = (draft_title or "").strip()
+    if not text:
+        return as_usd(0)
+    value = db.execute(
+        select(func.coalesce(func.sum(TitleSuggestion.cost_usd), 0)).where(
+            TitleSuggestion.draft_title == text
+        )
+    ).scalar_one()
+    return as_usd(value)
+
+
+def project_cost_breakdown(
+    project: Any, *, character: Any = None, titles_usd: Any = None
+) -> dict[str, Any]:
     scenes_usd = _items_cost(getattr(project, "scenes", None))
     audio_usd = _items_cost(getattr(project, "audio_tracks", None))
     descriptions_usd = _items_cost(getattr(project, "descriptions", None))
     thumbnails_usd = _items_cost(getattr(project, "thumbnails", None))
     llm_usd = as_usd(getattr(project, "llm_cost_usd", None))
+    characters_usd = as_usd(getattr(character, "cost_usd", None))
+    titles = as_usd(titles_usd)
     return {
         "project_id": project.id,
-        "total_usd": add_usd(scenes_usd, audio_usd, descriptions_usd, thumbnails_usd, llm_usd),
+        "total_usd": add_usd(
+            scenes_usd,
+            audio_usd,
+            descriptions_usd,
+            thumbnails_usd,
+            llm_usd,
+            characters_usd,
+            titles,
+        ),
         "scenes_usd": scenes_usd,
         "audio_tracks_usd": audio_usd,
         "descriptions_usd": descriptions_usd,
         "thumbnails_usd": thumbnails_usd,
         "llm_usd": llm_usd,
+        "characters_usd": characters_usd,
+        "titles_usd": titles,
     }
 
 
@@ -59,7 +88,11 @@ def load_project_cost(project_id: UUID | str, db: Session) -> dict[str, Any]:
     project = db.get(Project, pid)
     if project is None:
         raise ProjectNotFound(str(pid))
-    return project_cost_breakdown(project)
+    from app.core.project_cast import load_project_character
+
+    character = load_project_character(db, getattr(project, "automation_config", None))
+    titles_usd = title_suggestions_cost_usd(db, getattr(project, "title", None))
+    return project_cost_breakdown(project, character=character, titles_usd=titles_usd)
 
 
 def _cost_select(spent_at, amount):
@@ -77,6 +110,8 @@ def cost_entries_union():
         _cost_select(Description.created_at, Description.cost_usd),
         _cost_select(Thumbnail.created_at, Thumbnail.cost_usd),
         _cost_select(Project.created_at, Project.llm_cost_usd),
+        _cost_select(Character.created_at, Character.cost_usd),
+        _cost_select(TitleSuggestion.created_at, TitleSuggestion.cost_usd),
     )
     return union_all(*parts)
 

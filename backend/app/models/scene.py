@@ -31,7 +31,6 @@ class Scene(UUIDPrimaryKeyMixin, ProjectFKMixin, TimestampMixin, Base):
     )
     visual_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     media_type: Mapped[MediaType] = mapped_column(pg_enum(MediaType, "media_type"), nullable=False)
-    style: Mapped[str | None] = mapped_column(String(100), nullable=True)
     media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     generation_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     status: Mapped[SceneStatus] = mapped_column(

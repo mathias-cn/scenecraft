@@ -32,7 +32,6 @@ def test_linear_next_follows_declared_order():
     assert linear_next(ProjectStage.TRANSCRIPT_REVIEW) is ProjectStage.SCENE_PLANNING
     assert linear_next(ProjectStage.DESCRIPTION_STAGE) is ProjectStage.COMPLETED
     assert linear_next(ProjectStage.COMPLETED) is None
-    assert linear_next(ProjectStage.PUBLISHED) is None
     assert linear_next(ProjectStage.FAILED) is None
 
 
@@ -52,7 +51,6 @@ def test_linear_next_follows_declared_order():
         (ProjectStage.FAILED, ProjectStage.CREATED, False),
         (ProjectStage.CREATED, ProjectStage.FAILED, True),
         (ProjectStage.COMPLETED, ProjectStage.FAILED, False),
-        (ProjectStage.PUBLISHED, ProjectStage.FAILED, False),
         (ProjectStage.FAILED, ProjectStage.FAILED, False),
     ],
 )
@@ -66,7 +64,7 @@ def test_auto_flag_for_review_stages():
     assert not auto_flag_enabled({}, ProjectStage.TRANSCRIPT_REVIEW)
     assert not auto_flag_enabled({"auto_transcribe": True}, ProjectStage.SCENE_REVIEW)
     assert auto_flag_enabled({"auto_media_gen": True}, ProjectStage.MEDIA_REVIEW)
-    assert not auto_flag_enabled({"auto_description": True}, ProjectStage.READY_TO_PUBLISH)
+    assert not auto_flag_enabled({"auto_description": True}, ProjectStage.DESCRIPTION_STAGE)
     assert not auto_flag_enabled({"auto_media_gen": False}, ProjectStage.MEDIA_REVIEW)
 
 
@@ -125,12 +123,12 @@ def test_advance_rejects_stage_mismatch(monkeypatch):
     assert db.rollbacks == 1
 
 
-def test_advance_from_published_is_invalid(monkeypatch):
+def test_advance_from_completed_is_invalid(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
-    project = _project(current_stage=ProjectStage.PUBLISHED, status=ProjectStatus.COMPLETED)
+    project = _project(current_stage=ProjectStage.COMPLETED, status=ProjectStatus.COMPLETED)
     db = FakeDB(project)
     with pytest.raises(IllegalTransition, match="não há estágio seguinte"):
-        advance_stage(project.id, ProjectStage.PUBLISHED, db=db)
+        advance_stage(project.id, ProjectStage.COMPLETED, db=db)
 
 
 def test_advance_from_failed_is_invalid(monkeypatch):
@@ -228,7 +226,7 @@ def test_description_stage_completes_without_upload(monkeypatch):
 def test_complete_project_is_idempotent(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
     project = _project(
-        current_stage=ProjectStage.READY_TO_PUBLISH,
+        current_stage=ProjectStage.DESCRIPTION_STAGE,
         status=ProjectStatus.PAUSED_FOR_REVIEW,
         descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
     )

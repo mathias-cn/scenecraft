@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from sqlalchemy import DateTime, ForeignKey, Index, Text, UniqueConstraint, text
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -42,6 +43,7 @@ class Character(UUIDPrimaryKeyMixin, Base):
         server_default=text("now()"),
         nullable=False,
     )
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
     style: Mapped[Style] = relationship(back_populates="characters")
     assets: Mapped[list[CharacterAsset]] = relationship(
@@ -74,5 +76,6 @@ class CharacterAsset(UUIDPrimaryKeyMixin, Base):
         server_default=text("now()"),
         nullable=False,
     )
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 6), nullable=True)
 
     character: Mapped[Character] = relationship(back_populates="assets")

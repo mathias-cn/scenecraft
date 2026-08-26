@@ -20,7 +20,6 @@ if TYPE_CHECKING:
     from app.models.thumbnail import Thumbnail
     from app.models.transcript_segment import TranscriptSegment
     from app.models.video_assembly import VideoAssembly
-    from app.models.youtube_upload import YoutubeUpload
 
 
 class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -68,9 +67,6 @@ class Project(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="project",
         cascade="all, delete-orphan",
         order_by="Description.created_at",
-    )
-    youtube_uploads: Mapped[list[YoutubeUpload]] = relationship(
-        back_populates="project", cascade="all, delete-orphan"
     )
     jobs: Mapped[list[Job]] = relationship(
         back_populates="project",

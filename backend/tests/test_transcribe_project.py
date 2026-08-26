@@ -12,7 +12,10 @@ from app.core.transcribe_project import transcribe_project
 
 @pytest.fixture(autouse=True)
 def stub_original_audio_persist(monkeypatch):
-    monkeypatch.setattr("app.core.transcribe_project.persist_original_audio", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.persist_original_audio",
+        lambda *_a, **_k: SimpleNamespace(cost_usd=None),
+    )
 
 
 class RecordingDB:
@@ -248,3 +251,27 @@ def test_celery_task_is_registered_with_project_id_signature():
     from app.tasks.transcribe import transcribe_project_task
 
     assert transcribe_project_task.name == "scenecraft.transcribe_project"
+
+
+def test_record_whisper_cost_uses_audio_duration(monkeypatch):
+    from app.core.transcribe_project import record_whisper_cost
+    from app.providers.pricing import WHISPER_USD_PER_MINUTE
+
+    monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", lambda _path: 60_000)
+    track = SimpleNamespace(cost_usd=None)
+    record_whisper_cost(track, "clip.mp3", [])
+    assert track.cost_usd == WHISPER_USD_PER_MINUTE
+
+
+def test_whisper_duration_falls_back_to_last_segment(monkeypatch):
+    from app.core.transcribe_project import whisper_duration_ms
+
+    def boom(_path):
+        raise RuntimeError("ffprobe indisponível")
+
+    monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", boom)
+    duration = whisper_duration_ms(
+        "clip.mp3",
+        [Segment(start_ms=0, end_ms=1500, text="olá", language="pt")],
+    )
+    assert duration == 1500

@@ -16,7 +16,7 @@ from app.core.state_machine import ProjectNotFound, advance_stage
 from app.models.project import Project
 from app.models.transcript_segment import TranscriptSegment
 from app.providers import llm_client, transcription_client
-from app.providers.pricing import add_project_llm_cost
+from app.providers.pricing import add_cost, add_project_llm_cost, estimate_whisper_cost_usd
 from app.providers.transcription_client import Segment, TranscriptionError
 
 _LANG_ALIASES = {
@@ -56,8 +56,9 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
 
         with tempfile.TemporaryDirectory(prefix="scenecraft-transcribe-") as tmp:
             audio_path = load_audio(project, Path(tmp))
-            persist_original_audio(session, project, audio_path)
+            track = persist_original_audio(session, project, audio_path)
             segments = transcription_client.transcribe(str(audio_path), language="auto")
+            record_whisper_cost(track, audio_path, segments)
 
         if not segments:
             raise TranscriptionError("transcrição vazia")
@@ -81,6 +82,24 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
     finally:
         if owns:
             session.close()
+
+
+def whisper_duration_ms(audio_path: str | Path, segments: list[Segment]) -> int:
+    try:
+        from app.core.plan_scenes import ffprobe_duration_ms
+
+        return ffprobe_duration_ms(audio_path)
+    except Exception:
+        if segments:
+            return max(int(segment.end_ms) for segment in segments)
+        return 0
+
+
+def record_whisper_cost(track: Any, audio_path: str | Path, segments: list[Segment]) -> None:
+    if track is None:
+        return
+    duration_ms = whisper_duration_ms(audio_path, segments)
+    add_cost(track, estimate_whisper_cost_usd(duration_ms=duration_ms))
 
 
 def _whisper_language(segments: list[Segment]) -> str:

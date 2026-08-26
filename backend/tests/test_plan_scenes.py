@@ -113,7 +113,6 @@ def test_plan_project_scenes_enriches_visual_prompt_with_character(monkeypatch):
     assert scene.source_segment_ids == [0]
     assert "heroína de casaco vermelho" in scene.visual_prompt
     assert "Anime" in scene.visual_prompt
-    assert scene.style is None
 
 
 def test_validate_segment_partition_requires_exact_coverage():

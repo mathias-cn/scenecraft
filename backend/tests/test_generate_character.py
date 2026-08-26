@@ -97,6 +97,7 @@ def _character(**kwargs):
         reference_image_url=None,
         base_image_url=None,
         status=CharacterStatus.PENDING_APPROVAL,
+        cost_usd=None,
     )
     defaults.update(kwargs)
     return SimpleNamespace(**defaults)
@@ -147,6 +148,8 @@ def test_base_image_uses_generate_without_reference(monkeypatch):
     assert not client.edit_calls
     assert character.base_image_url == "https://cdn.example.com/base.png"
     assert result["used_reference"] is False
+    assert character.cost_usd is not None
+    assert character.cost_usd > 0
 
 
 def test_base_image_uses_edit_with_reference(monkeypatch):
@@ -194,6 +197,8 @@ def test_base_image_skips_save_if_rejected(monkeypatch):
     )
     assert result["skipped"] is True
     assert character.base_image_url is None
+    assert character.cost_usd is not None
+    assert character.cost_usd > 0
 
 
 def test_base_image_missing_character():
@@ -249,6 +254,8 @@ def test_character_asset_edits_from_base(monkeypatch):
     assert result["image_url"] == "https://cdn.example.com/smiling.png"
     assert db.added
     assert db.added[0].asset_type is CharacterAssetType.SMILING
+    assert db.added[0].cost_usd is not None
+    assert character.cost_usd is not None
 
 
 def test_character_asset_skips_existing(monkeypatch):

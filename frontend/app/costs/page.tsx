@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { CostBarChart, formatUsd } from "@/components/cost-bar-chart";
 import { ApiError, getCostSeries } from "@/lib/api";
@@ -34,7 +35,9 @@ export default async function CostsPage() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <p className="text-sm text-white/45">Gasto estimado com Higgsfield, ElevenLabs e LLM.</p>
+      <p className="text-sm text-white/45">
+        Gasto estimado com imagens, Whisper, TTS, personagens, títulos e LLM.
+      </p>
       {error ? (
         <p className="mt-6 rounded-md border border-red-500/30 bg-red-950/40 px-4 py-3 font-mono text-xs text-red-200">
           {error}
@@ -56,12 +59,18 @@ export default async function CostsPage() {
               Hoje: <span className="font-medium text-white">{formatUsd(series.today_usd)}</span>
               {" / "}
               {formatUsd(series.daily_limit_usd)}
-              {series.limit_reached ? " — limite diário atingido; jobs pagos pausados." : ""}
+              {series.limit_reached ? " — limite diário atingido; jobs pagos pausados." : ""}{" "}
+              <Link href="/settings" className="text-brass-400 hover:text-brass-300">
+                Alterar teto
+              </Link>
             </p>
           ) : (
             <p className="text-sm text-white/40">
-              Sem teto diário. Defina <span className="font-mono text-[11px]">DAILY_COST_LIMIT_USD</span> no
-              .env para pausar jobs pagos ao atingir o valor.
+              Sem teto diário. Defina o valor em{" "}
+              <Link href="/settings" className="text-brass-400 hover:text-brass-300">
+                Configurações
+              </Link>
+              .
             </p>
           )}
           <CostBarChart

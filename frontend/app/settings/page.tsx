@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 
-import { formatUsd } from "@/components/cost-bar-chart";
+import { DailyLimitForm } from "@/components/daily-limit-form";
 import { ApiError, getCostBudget } from "@/lib/api";
 import { getApiBaseUrl } from "@/lib/config";
 
@@ -12,15 +13,15 @@ export const metadata: Metadata = {
 
 export default async function SettingsPage() {
   const apiUrl = getApiBaseUrl();
-  let budgetLabel = "não carregado";
+  let form: ReactNode = (
+    <p className="mt-8 font-mono text-xs text-red-300">Não foi possível carregar o teto diário.</p>
+  );
   try {
     const budget = await getCostBudget();
-    budgetLabel =
-      budget.daily_limit_usd == null
-        ? "desligado (sem teto)"
-        : `${formatUsd(budget.today_usd)} / ${formatUsd(budget.daily_limit_usd)} (${budget.timezone})`;
+    form = <DailyLimitForm initial={budget} />;
   } catch (err) {
-    budgetLabel = err instanceof ApiError || err instanceof Error ? err.message : "falha ao consultar";
+    const message = err instanceof ApiError || err instanceof Error ? err.message : "falha ao consultar";
+    form = <p className="mt-8 font-mono text-xs text-red-300">{message}</p>;
   }
 
   return (
@@ -28,8 +29,8 @@ export default async function SettingsPage() {
       <p className="label-tech mb-3">Sistema</p>
       <h2 className="text-xl font-medium tracking-tight text-white">Configurações</h2>
       <p className="mt-2 text-sm leading-relaxed text-white/50">
-        Chaves de providers e filas Celery vivem no backend. O teto diário vem de{" "}
-        <span className="font-mono text-[11px] text-white/70">DAILY_COST_LIMIT_USD</span>.
+        Chaves de providers e filas Celery vivem no backend. O teto diário de custo fica no banco e
+        pode ser editado aqui, sem redeploy.
       </p>
 
       <dl className="mt-8 divide-y divide-white/[0.06] rounded-xl border border-white/[0.08] bg-ink-900">
@@ -38,14 +39,11 @@ export default async function SettingsPage() {
           <dd className="font-mono text-xs text-brass-400 break-all">{apiUrl}</dd>
         </div>
         <div className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <dt className="label-tech">Teto diário</dt>
-          <dd className="font-mono text-xs text-white/55">{budgetLabel}</dd>
-        </div>
-        <div className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <dt className="label-tech">Client</dt>
           <dd className="font-mono text-xs text-white/55">lib/api-client.ts → FastAPI</dd>
         </div>
       </dl>
+      {form}
     </div>
   );
 }

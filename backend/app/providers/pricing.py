@@ -27,6 +27,9 @@ ELEVENLABS_USD_PER_1K_CHARS = Decimal("0.30")
 # Fallback quando a Higgsfield não devolve cost no payload.
 HIGGSFIELD_IMAGE_USD = Decimal("0.03")
 
+# OpenAI Whisper whisper-1: US$ 0.006 / minuto de áudio.
+WHISPER_USD_PER_MINUTE = Decimal("0.006")
+
 _CHARS_PER_TOKEN = 4
 
 
@@ -118,6 +121,18 @@ def usage_tokens(usage: Any) -> tuple[int, int]:
     prompt = getattr(usage, "prompt_tokens", None) or getattr(usage, "input_tokens", None) or 0
     completion = getattr(usage, "completion_tokens", None) or getattr(usage, "output_tokens", None) or 0
     return int(prompt or 0), int(completion or 0)
+
+
+def estimate_whisper_cost_usd(*, duration_ms: int = 0) -> Decimal:
+    """Custo Whisper-1 pelo minuto (e fração) de áudio processado."""
+    minutes = Decimal(max(0, int(duration_ms))) / Decimal("60000")
+    return as_usd(minutes * WHISPER_USD_PER_MINUTE)
+
+
+def add_cost(obj: Any, amount: Any, field: str = "cost_usd") -> Decimal:
+    total = add_usd(getattr(obj, field, None), amount)
+    setattr(obj, field, total)
+    return total
 
 
 def estimate_elevenlabs_cost_usd(text: str | None) -> Decimal:

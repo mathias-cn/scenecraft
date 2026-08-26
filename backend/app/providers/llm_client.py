@@ -472,7 +472,7 @@ def generate_titles(draft_title: str) -> list[str]:
     if not draft:
         raise LLMError("draft_title vazio")
     payload = {"draft_title": draft, "count": 3}
-    result, _cost = priced_completion(
+    result, cost = priced_completion(
         TITLE_SYSTEM,
         json.dumps(payload, ensure_ascii=False),
         model=title_model(),
@@ -493,4 +493,4 @@ def generate_titles(draft_title: str) -> list[str]:
             break
     if len(titles) < 3:
         raise LLMJSONError("JSON de títulos deve conter 3 títulos")
-    return titles
+    return PricedSequence(titles, cost)
