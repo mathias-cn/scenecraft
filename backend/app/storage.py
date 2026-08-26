@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import mimetypes
 import time
+from uuid import uuid4
 from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
@@ -142,6 +143,13 @@ def object_key(project_id: str, filename: str) -> str:
     if not prefix:
         return safe_name
     return f"{prefix}/{safe_name}"
+
+
+def versioned_filename(stem: str, suffix: str = ".png") -> str:
+    """Nome único por geração para o CDN e o browser não reutilizarem cache de overwrite."""
+    ext = suffix if str(suffix).startswith(".") else f".{suffix}"
+    base = Path(stem).stem.strip() or "file"
+    return f"{base}_{uuid4().hex}{ext.lower()}"
 
 
 DOWNLOAD_URL_EXPIRES = 3600

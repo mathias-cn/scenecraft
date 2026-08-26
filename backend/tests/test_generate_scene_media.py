@@ -110,6 +110,30 @@ def test_generate_scene_media_uses_named_provider(monkeypatch):
     assert scene.cost_usd is not None
 
 
+def test_generate_scene_media_uses_unique_object_name(monkeypatch):
+    project, scene = _scene_project("openai")
+    db = FakeDB(project, scene)
+    fake = FakeProvider("openai")
+    names = []
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", lambda name: fake)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+
+    def fake_upload(fileobj, project_id, filename, **kwargs):
+        names.append(filename)
+        return f"https://cdn.example.com/{filename}"
+
+    generate_scene_media(project.id, scene.id, db=db, upload=fake_upload)
+    generate_scene_media(project.id, scene.id, db=db, upload=fake_upload)
+    assert names[0].startswith("scene_0000_")
+    assert names[0].endswith(".png")
+    assert names[0] != "scene_0000.png"
+    assert names[0] != names[1]
+    assert "scenecraft-media" not in names[0]
+
+
 def test_generate_scene_media_reads_model_and_quality_from_config(monkeypatch):
     project, scene = _scene_project("openai")
     project.automation_config["image_model"] = "gpt-image-1-mini"

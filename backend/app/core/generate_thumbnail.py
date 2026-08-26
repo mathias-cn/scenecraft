@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -117,13 +118,15 @@ def generate_thumbnail(
             raise ThumbnailError("ImageProvider devolveu imagem vazia")
         cost = add_usd(summary_cost, prompt_cost, result.cost_usd)
 
+        from app.storage import versioned_filename
+
         if upload is None:
             from app.storage import upload_fileobj as upload
 
         url = upload(
             BytesIO(result.image_bytes),
             str(project.id),
-            "thumbnail.png",
+            versioned_filename("thumbnail"),
             content_type="image/png",
         )
         thumb = Thumbnail(
@@ -239,6 +242,7 @@ def persist_uploaded_thumbnail(
             raise IllegalTransition("thumbnail só pode ser enviada em thumbnail_stage")
 
         from app.core.ingest import assert_image_upload_filename, persist_upload, sanitize_image_filename
+        from app.storage import versioned_filename
 
         safe_name = sanitize_image_filename(filename)
         assert_image_upload_filename(safe_name)
@@ -246,7 +250,7 @@ def persist_uploaded_thumbnail(
         url = put(
             fileobj,
             project_id=project.id,
-            filename=f"thumbnails/{safe_name}",
+            filename=versioned_filename(Path(safe_name).stem, Path(safe_name).suffix or ".png"),
             content_type=content_type,
         )
         thumb = Thumbnail(

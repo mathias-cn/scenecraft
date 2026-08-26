@@ -18,6 +18,7 @@ from app.models.style import Style
 from app.providers.image_provider import DEFAULT_IMAGE_QUALITY, DEFAULT_OPENAI_MODEL
 from app.providers.openai_image_client import OpenAIImageClient
 from app.providers.pricing import add_cost
+from app.storage import versioned_filename
 
 CHARACTER_IMAGE_SIZE = "1024x1536"
 BASE_POSE_INSTRUCTION = "corpo inteiro, fundo neutro, pose neutra"
@@ -144,7 +145,7 @@ def generate_character_base_image(
         url = uploader(
             BytesIO(result.image_bytes),
             f"characters/{character.id}",
-            "base.png",
+            versioned_filename("base"),
             content_type="image/png",
         )
         character.base_image_url = url
@@ -271,7 +272,7 @@ def generate_character_asset(
         url = uploader(
             BytesIO(result.image_bytes),
             f"characters/{character.id}",
-            f"{parsed.value}.png",
+            versioned_filename(parsed.value),
             content_type="image/png",
         )
         if existing:
@@ -351,4 +352,4 @@ def reference_filename(original: str | None) -> str:
     suffix = Path(original or "reference.png").suffix.lower()
     if suffix not in {".png", ".jpg", ".jpeg", ".webp", ".gif"}:
         suffix = ".png"
-    return f"reference{suffix}"
+    return versioned_filename("reference", suffix)

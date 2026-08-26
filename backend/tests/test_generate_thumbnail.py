@@ -145,6 +145,42 @@ def test_generate_thumbnail_uses_openai_from_config(monkeypatch):
     assert float(thumb.cost_usd) == 0.041
 
 
+def test_generate_thumbnail_uses_unique_object_name(monkeypatch):
+    project = _project("openai")
+    fake = FakeProvider()
+    names = []
+    monkeypatch.setattr(
+        "app.core.generate_thumbnail.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    monkeypatch.setattr("app.core.generate_thumbnail.advance_stage", _stub_advance(project))
+
+    def fake_upload(fileobj, project_id, filename, **kwargs):
+        names.append(filename)
+        return f"https://cdn.example.com/{filename}"
+
+    generate_thumbnail(
+        project.id,
+        db=FakeDB(project),
+        summarize=lambda **kwargs: "summary",
+        prompt_from_summary=lambda **kwargs: "prompt",
+        upload=fake_upload,
+        image_client=fake,
+    )
+    generate_thumbnail(
+        project.id,
+        db=FakeDB(project),
+        summarize=lambda **kwargs: "summary",
+        prompt_from_summary=lambda **kwargs: "prompt",
+        upload=fake_upload,
+        image_client=fake,
+    )
+    assert names[0].startswith("thumbnail_")
+    assert names[0].endswith(".png")
+    assert names[0] != "thumbnail.png"
+    assert names[0] != names[1]
+
+
 def test_generate_thumbnail_uses_higgsfield_provider(monkeypatch):
     project = _project("higgsfield")
     fake = FakeProvider()
@@ -277,7 +313,9 @@ def test_persist_uploaded_thumbnail_saves_uploaded_source():
     )
     assert result["source"] == ThumbnailSource.UPLOADED.value
     assert project.thumbnails[0].source is ThumbnailSource.UPLOADED
-    assert uploaded[0][1].endswith("cover.JPG")
+    assert uploaded[0][1].startswith("cover_")
+    assert uploaded[0][1].endswith(".jpg")
+    assert uploaded[0][1] != "cover.JPG"
 
     with pytest.raises(Exception, match="imagem"):
         persist_uploaded_thumbnail(

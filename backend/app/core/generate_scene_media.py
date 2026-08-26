@@ -127,10 +127,12 @@ def generate_scene_media(
             else:
                 result = client.generate_image(prompt, **generate_kwargs)
 
+        from app.storage import versioned_filename
+
         if upload is None:
             from app.storage import upload_fileobj as upload
 
-        filename = f"scenes/{scene.index:04d}.png"
+        filename = versioned_filename(f"scene_{scene.index:04d}")
         url = upload(
             BytesIO(result.image_bytes),
             str(project.id),

@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from app.storage import object_key, public_url, relative_object_key
+from app.storage import object_key, public_url, relative_object_key, versioned_filename
 
 
 def test_object_key_is_relative_to_bucket_without_bucket_name(monkeypatch):
@@ -38,3 +38,15 @@ def test_public_url_strips_bucket_prefixed_key(monkeypatch):
 def test_relative_object_key_leaves_normal_paths(monkeypatch):
     monkeypatch.setattr("app.storage.settings.s3_bucket", "scenecraft-media")
     assert relative_object_key("characters/abc/base.png") == "characters/abc/base.png"
+
+
+def test_versioned_filename_is_unique_per_call():
+    first = versioned_filename("base")
+    second = versioned_filename("base")
+    assert first.startswith("base_")
+    assert first.endswith(".png")
+    assert first != second
+    assert versioned_filename("scene_0001") != versioned_filename("scene_0001")
+    jpeg = versioned_filename("cover", ".JPG")
+    assert jpeg.startswith("cover_")
+    assert jpeg.endswith(".jpg")

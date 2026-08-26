@@ -117,9 +117,13 @@ def test_asset_prompts_cover_all_types():
     assert "Cartoon" in text
 
 
-def test_reference_filename_keeps_safe_suffix():
-    assert reference_filename("foto.JPEG") == "reference.jpeg"
-    assert reference_filename("notes.txt") == "reference.png"
+def test_reference_filename_keeps_safe_suffix_and_is_unique():
+    first = reference_filename("foto.JPEG")
+    second = reference_filename("foto.JPEG")
+    assert first.startswith("reference_")
+    assert first.endswith(".jpeg")
+    assert first != second
+    assert reference_filename("notes.txt").endswith(".png")
 
 
 def test_character_create_strips_prompt():
@@ -134,6 +138,12 @@ def test_base_image_uses_generate_without_reference(monkeypatch):
     style = SimpleNamespace(id=style_id, name="Anime")
     db = FakeDB(character, style)
     client = FakeOpenAI()
+    captured = []
+
+    def fake_upload(fileobj, prefix, filename, **kwargs):
+        captured.append((prefix, filename))
+        return f"https://cdn.example.com/{filename}"
+
     monkeypatch.setattr(
         "app.core.generate_character.provider_semaphore.hold",
         lambda *_a, **_k: nullcontext(),
@@ -142,14 +152,41 @@ def test_base_image_uses_generate_without_reference(monkeypatch):
         character.id,
         db=db,
         client=client,
-        upload=lambda *_a, **_k: "https://cdn.example.com/base.png",
+        upload=fake_upload,
     )
     assert client.generate_calls
     assert not client.edit_calls
-    assert character.base_image_url == "https://cdn.example.com/base.png"
+    assert captured[0][0] == f"characters/{character.id}"
+    assert captured[0][1].startswith("base_")
+    assert captured[0][1].endswith(".png")
+    assert captured[0][1] != "base.png"
+    assert character.base_image_url == f"https://cdn.example.com/{captured[0][1]}"
     assert result["used_reference"] is False
     assert character.cost_usd is not None
     assert character.cost_usd > 0
+
+
+def test_base_image_regeneration_writes_a_new_object_key(monkeypatch):
+    style_id = uuid4()
+    character = _character(style_id=style_id)
+    style = SimpleNamespace(id=style_id, name="Anime")
+    db = FakeDB(character, style)
+    client = FakeOpenAI()
+    names = []
+
+    def fake_upload(fileobj, prefix, filename, **kwargs):
+        names.append(filename)
+        return f"https://cdn.example.com/{filename}"
+
+    monkeypatch.setattr(
+        "app.core.generate_character.provider_semaphore.hold",
+        lambda *_a, **_k: nullcontext(),
+    )
+    first = generate_character_base_image(character.id, db=db, client=client, upload=fake_upload)
+    second = generate_character_base_image(character.id, db=db, client=client, upload=fake_upload)
+    assert names[0] != names[1]
+    assert first["base_image_url"] != second["base_image_url"]
+    assert character.base_image_url == second["base_image_url"]
 
 
 def test_base_image_uses_edit_with_reference(monkeypatch):
@@ -236,22 +273,31 @@ def test_character_asset_edits_from_base(monkeypatch):
     )
     db = FakeDB(character, SimpleNamespace(id=style_id, name="Anime"))
     client = FakeOpenAI()
+    captured = []
     monkeypatch.setattr(
         "app.core.generate_character.provider_semaphore.hold",
         lambda *_a, **_k: nullcontext(),
     )
+
+    def fake_upload(fileobj, prefix, filename, **kwargs):
+        captured.append(filename)
+        return f"https://cdn.example.com/{filename}"
+
     result = generate_character_asset(
         character.id,
         CharacterAssetType.SMILING,
         db=db,
         client=client,
-        upload=lambda *_a, **_k: "https://cdn.example.com/smiling.png",
+        upload=fake_upload,
         fetch_image=lambda url: b"BASE",
     )
     assert client.edit_calls
     assert client.edit_calls[0][1] == b"BASE"
     assert "sorrindo" in client.edit_calls[0][0]
-    assert result["image_url"] == "https://cdn.example.com/smiling.png"
+    assert captured[0].startswith("smiling_")
+    assert captured[0].endswith(".png")
+    assert captured[0] != "smiling.png"
+    assert result["image_url"] == f"https://cdn.example.com/{captured[0]}"
     assert db.added
     assert db.added[0].asset_type is CharacterAssetType.SMILING
     assert db.added[0].cost_usd is not None
