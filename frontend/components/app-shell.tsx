@@ -26,6 +26,10 @@ export function AppShell({ children }: AppShellProps) {
   const [open, setOpen] = useState(false);
   const title = titleForPath(pathname);
 
+  if (pathname === "/login") {
+    return <>{children}</>;
+  }
+
   return (
     <div className="flex min-h-screen bg-ink-950 text-zinc-100">
       {open ? (
