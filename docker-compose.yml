@@ -1,5 +1,8 @@
 name: scenecraft
 
+# Redis, API, workers e frontend. O Postgres é o projeto Supabase
+# (DATABASE_URL e DATABASE_URL_MIGRATIONS no .env) — não há serviço postgres aqui.
+
 services:
   redis:
     image: redis:7-alpine
@@ -74,18 +77,6 @@ services:
     depends_on:
       - api
     restart: unless-stopped
-
-  # Opcional — Postgres local sem internet: descomente o serviço abaixo
-  # e use sslmode=disable nas duas DATABASE_URL*.
-  # postgres:
-  #   profiles: ["local-db"]
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_USER: scenecraft
-  #     POSTGRES_PASSWORD: scenecraft
-  #     POSTGRES_DB: scenecraft
-  #   ports:
-  #     - "5432:5432"
 
 volumes:
   frontend_node_modules:

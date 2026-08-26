@@ -2,16 +2,16 @@
 
 Sistema pessoal de geração automatizada de vídeos para YouTube.
 
-O pipeline pega uma ideia, escreve o roteiro (Anthropic), gera a narração (ElevenLabs), produz o vídeo (Higgsfield), armazena o media (S3 / Cloudflare R2) e publica no YouTube.
+O pipeline pega uma ideia, escreve o roteiro (LLM), gera a narração (ElevenLabs), produz o vídeo (Higgsfield) e armazena o media (S3 / Cloudflare R2). O pacote final (MP4, título, descrição e tags) fica pronto para colar no YouTube Studio.
 
 ```
 frontend (Next.js)  →  api (FastAPI)
                            ↓
                       redis + workers Celery (filas por tipo de job)
                            ↓
-                      Supabase Postgres
+                      Supabase Postgres (gerenciado, não self-hosted)
                            ↓
-              Anthropic · ElevenLabs · Higgsfield · YouTube · S3/R2
+              OpenAI · ElevenLabs · Higgsfield · S3/R2
 ```
 
 ## Layout do backend
@@ -31,12 +31,20 @@ frontend (Next.js)  →  api (FastAPI)
 | --- | --- |
 | `/backend` | Python 3.11, FastAPI, Celery, SQLAlchemy, Alembic, Poetry |
 | `/frontend` | Next.js 14, TypeScript, App Router |
-| Banco | Supabase Postgres (conexão direta + pooler) |
-| Infra local | Redis 7, Docker Compose |
+| Banco | **Supabase Postgres** (gerenciado, não self-hosted — em dev e em produção) |
+| Infra local | Redis 7, Docker Compose (sem Postgres) |
+
+## Requisitos
+
+Antes de subir a API, o worker ou o Compose, você precisa de:
+
+1. Um **projeto Supabase** com Postgres (o SceneCraft **não** sobe Postgres local).
+2. Docker Desktop (ou Docker Engine + Compose v2), se for usar o `docker compose`.
+3. Um `.env` na raiz com `DATABASE_URL` e `DATABASE_URL_MIGRATIONS` apontando para esse projeto.
 
 ## Banco de dados (Supabase)
 
-O Postgres **não** sobe no Docker Compose. Crie um projeto no [Supabase](https://supabase.com) e use as connection strings do painel.
+O Postgres é **sempre** o do Supabase. Não existe serviço `postgres` no `docker-compose.yml`. A API e os workers conectam só via `DATABASE_URL` / `DATABASE_URL_MIGRATIONS`.
 
 1. Crie um projeto em [supabase.com/dashboard](https://supabase.com/dashboard).
 2. Em **Project Settings → Data API** (ou API), **desabilite**:
@@ -70,13 +78,13 @@ A API aplica as migrations na subida (`alembic upgrade head`) usando `DATABASE_U
 
 ## Subir tudo com Docker Compose
 
-**Requisitos:** Docker Desktop (ou Docker Engine + Compose v2) e o `.env` preenchido com as URIs do Supabase.
+Com o `.env` já preenchido com as URIs do Supabase:
 
 ```bash
 docker compose up --build
 ```
 
-Na primeira execução o Compose constrói as imagens, sobe o Redis, aplica as migrations no Supabase e inicia o pipeline.
+Na primeira execução o Compose constrói as imagens, sobe o Redis, aplica as migrations **no Supabase** e inicia o pipeline.
 
 Abra:
 
@@ -108,12 +116,12 @@ docker compose down
 
 ## Serviços no `docker-compose.yml`
 
-- **api** — FastAPI (`uvicorn`), porta `8000` (roda Alembic antes de subir)
+- **api** — FastAPI (`uvicorn`), porta `8000` (roda Alembic no Supabase antes de subir)
 - **worker** — um processo Celery por fila (`transcribe`, `scene_planning`, `media_gen`, `audio_gen`, `render`, `thumbnail`, `description`, `upload`), cada um com concorrência via env
 - **redis** — broker e backend de resultados do Celery
 - **frontend** — Next.js 14, porta `3000`
 
-Há um bloco **comentado** de Postgres local no compose, só para desenvolvimento sem internet. Nesse caso use `sslmode=disable` nas duas URLs.
+Não há Postgres neste arquivo: o banco é o projeto Supabase configurado no `.env`.
 
 ## Variáveis de ambiente
 
@@ -126,12 +134,11 @@ Veja `.env.example`. As principais:
 | `REDIS_URL` | Broker e result backend do Celery |
 | `CELERY_CONCURRENCY_*` | Concorrência por fila (ex. `CELERY_CONCURRENCY_MEDIA_GEN=1`) |
 | `CELERY_TASK_MAX_RETRIES` | Retries Celery após a 1ª execução (padrão `2` = 3 tentativas) |
-| `PROVIDER_CONCURRENCY_*` | Semáforo Redis por provider (`higgsfield`, `elevenlabs`, `anthropic`, `youtube`, `r2`) |
+| `PROVIDER_CONCURRENCY_*` | Semáforo Redis por provider (`higgsfield`, `elevenlabs`, `openai`, `r2`) |
 | `RATE_LIMIT_*` | Teto de jobs por janela Redis (`RATE_LIMIT_WINDOW_SECONDS`) |
 | `HIGGSFIELD_API_KEY` | Geração de vídeo |
 | `ELEVENLABS_API_KEY` | TTS / narração |
-| `ANTHROPIC_API_KEY` | Roteiro |
-| `YOUTUBE_CLIENT_ID` / `YOUTUBE_CLIENT_SECRET` | Upload OAuth |
+| `OPENAI_API_KEY` | Whisper, LLM e imagens |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT_URL` | S3 ou R2 |
 | `R2_ACCOUNT_ID` | Conta Cloudflare R2 |
 
@@ -150,7 +157,7 @@ docker compose up redis -d
 ```bash
 cd backend
 poetry install
-# DATABASE_URL e DATABASE_URL_MIGRATIONS vêm do .env na raiz
+# DATABASE_URL e DATABASE_URL_MIGRATIONS vêm do .env na raiz (Supabase)
 poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 poetry run python -m app.worker
