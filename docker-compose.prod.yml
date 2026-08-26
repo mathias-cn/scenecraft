@@ -34,8 +34,6 @@ services:
       - .env
     environment:
       REDIS_URL: redis://redis:6379/0
-    ports:
-      - "8000:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -76,9 +74,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-    ports:
-      - "3000:3000"
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://api.mazting.com}
     depends_on:
       api:
         condition: service_healthy
@@ -91,5 +87,24 @@ services:
     restart: unless-stopped
     logging: *default-logging
 
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    restart: unless-stopped
+    logging: *default-logging
+
 volumes:
   redis_data:
+  caddy_data:
+  caddy_config:

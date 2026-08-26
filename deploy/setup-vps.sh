@@ -61,15 +61,15 @@ if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
   echo "    Usuário ${SUDO_USER} adicionado ao grupo docker (precisa relogar)."
 fi
 
-echo "==> 2/5 Firewall ufw (22, 3000, 8000)"
+echo "==> 2/5 Firewall ufw (22, 80, 443)"
 if [[ "${SKIP_FIREWALL}" != "1" ]]; then
   apt-get install -y ufw
   ufw default deny incoming
   ufw default allow outgoing
   ufw allow OpenSSH
   ufw allow 22/tcp comment 'ssh'
-  ufw allow 3000/tcp comment 'scenecraft frontend'
-  ufw allow 8000/tcp comment 'scenecraft api'
+  ufw allow 80/tcp comment 'caddy http'
+  ufw allow 443/tcp comment 'caddy https'
   ufw --force enable
   ufw status verbose
 else
@@ -114,7 +114,7 @@ fi
 
 if grep -qE '^NEXT_PUBLIC_API_URL=http://localhost' .env || grep -qE '^CORS_ORIGINS=http://localhost' .env; then
   echo "    Aviso: CORS_ORIGINS / NEXT_PUBLIC_API_URL ainda apontam para localhost."
-  echo "    Em produção use o IP ou domínio da VPS (ex.: http://SEU_IP:3000 e http://SEU_IP:8000)."
+  echo "    Em produção use HTTPS via Caddy (ex.: https://scenecraft.mazting.com e https://api.mazting.com)."
 fi
 
 echo "==> 5/5 Migrations (Alembic no Supabase) + docker compose"
@@ -127,10 +127,10 @@ fi
 docker compose -f docker-compose.prod.yml up -d --build
 
 echo
-echo "Pronto. A API aplica alembic upgrade head na subida."
-echo "  Frontend: http://SEU_IP:3000"
-echo "  API:      http://SEU_IP:8000/health"
-echo "  Logs:     docker compose -f ${APP_DIR}/docker-compose.prod.yml logs -f api worker frontend"
+echo "Pronto. A API aplica alembic upgrade head na subida. Só o Caddy publica 80/443."
+echo "  Frontend: https://scenecraft.mazting.com"
+echo "  API:      https://api.mazting.com/health"
+echo "  Logs:     docker compose -f ${APP_DIR}/docker-compose.prod.yml logs -f caddy api worker frontend"
 echo
 echo "Se o painel chamar a API no host errado, ajuste NEXT_PUBLIC_API_URL no .env e reconstrua o frontend:"
 echo "  docker compose -f docker-compose.prod.yml up -d --build frontend"

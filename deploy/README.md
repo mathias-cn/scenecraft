@@ -4,7 +4,7 @@ Guia para subir o SceneCraft numa VPS Ubuntu 22.04 ou 24.04 com Docker. O Postgr
 
 Há um script que replica estes passos: `deploy/setup-vps.sh`.
 
-Portas públicas: **22** (SSH), **3000** (frontend), **8000** (API). Redis fica só na rede Docker.
+Portas públicas: **22** (SSH), **80** e **443** (Caddy). API e frontend só na rede Docker; Redis também.
 
 ## 1. Requisitos na VPS
 
@@ -13,7 +13,7 @@ Portas públicas: **22** (SSH), **3000** (frontend), **8000** (API). Redis fica 
 - Chaves OpenAI, ElevenLabs, Higgsfield e S3/R2
 - Firewall do provedor (Hetzner Cloud Firewall, Security Group, etc.) alinhado ao ufw: as mesmas portas precisam estar abertas lá também
 
-Substitua `SEU_IP` pelo IPv4 público da máquina (ou o domínio, se já apontar para ela).
+Os DNS de `scenecraft.mazting.com` e `api.mazting.com` devem apontar para o IPv4 da VPS (Caddy emite o certificado Let's Encrypt).
 
 ## 2. Docker e Docker Compose
 
@@ -46,7 +46,7 @@ usermod -aG docker "$USER"
 
 ## 3. Firewall (ufw)
 
-Libere só SSH e as portas do app. **Faça isso com a sessão SSH ainda aberta** e confirme que a 22 está permitida antes de ativar.
+Libere só SSH e HTTP/HTTPS. **Faça isso com a sessão SSH ainda aberta** e confirme que a 22 está permitida antes de ativar.
 
 ```bash
 apt-get install -y ufw
@@ -54,13 +54,13 @@ ufw default deny incoming
 ufw default allow outgoing
 ufw allow OpenSSH
 ufw allow 22/tcp comment 'ssh'
-ufw allow 3000/tcp comment 'scenecraft frontend'
-ufw allow 8000/tcp comment 'scenecraft api'
+ufw allow 80/tcp comment 'caddy http'
+ufw allow 443/tcp comment 'caddy https'
 ufw enable
 ufw status verbose
 ```
 
-Não abra `6379` (Redis) nem `5432` (Postgres do Supabase). O Redis só existe na rede interna do Compose.
+Não abra `3000`, `8000`, `6379` (Redis) nem `5432` (Postgres do Supabase). API, frontend e Redis só existem na rede interna do Compose.
 
 ## 4. Clonar o repositório
 
@@ -81,17 +81,17 @@ cp .env.example .env
 nano .env
 ```
 
-Preencha as URIs do Supabase e as chaves. Em produção **não** use `localhost` para o browser:
+Preencha as URIs do Supabase e as chaves. Em produção **não** use `localhost` nem IP:porta — o Caddy serve HTTPS nos domínios:
 
 | Variável | Exemplo |
 | --- | --- |
 | `DATABASE_URL` | Pooler Supabase `:6543` com `sslmode=require` |
 | `DATABASE_URL_MIGRATIONS` | Conexão direta Supabase `:5432` com `sslmode=require` |
 | `REDIS_URL` | Deixe `redis://redis:6379/0` (hostname do serviço Compose) |
-| `CORS_ORIGINS` | `http://SEU_IP:3000` (várias origens: separado por vírgula) |
-| `NEXT_PUBLIC_API_URL` | `http://SEU_IP:8000` |
+| `CORS_ORIGINS` | `https://scenecraft.mazting.com` (várias origens: separado por vírgula) |
+| `NEXT_PUBLIC_API_URL` | `https://api.mazting.com` |
 
-`NEXT_PUBLIC_API_URL` entra no **build** da imagem do frontend. Se mudar o IP ou o domínio depois, reconstrua o serviço `frontend`.
+`NEXT_PUBLIC_API_URL` entra no **build** da imagem do frontend. Se mudar o domínio depois, reconstrua o serviço `frontend`.
 
 O `.env` não vai para o git. Confira permissões:
 
@@ -118,16 +118,20 @@ Conferir:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps
-curl -fsS "http://127.0.0.1:8000/health"
-curl -fsS -o /dev/null -w "%{http_code}\n" "http://127.0.0.1:3000"
+curl -fsS "https://api.mazting.com/health"
+curl -fsS -o /dev/null -w "%{http_code}\n" "https://scenecraft.mazting.com"
 ```
 
-No browser: `http://SEU_IP:3000` (UI) e `http://SEU_IP:8000/docs` (Swagger).
+No browser: `https://scenecraft.mazting.com` (UI) e `https://api.mazting.com/docs` (Swagger). Health interno, sem publicar portas:
+
+```bash
+docker compose -f docker-compose.prod.yml exec api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
+```
 
 Logs:
 
 ```bash
-docker compose -f docker-compose.prod.yml logs -f api worker frontend
+docker compose -f docker-compose.prod.yml logs -f caddy api worker frontend
 ```
 
 Parar:
@@ -166,8 +170,9 @@ Variáveis: `REPO_URL`, `APP_DIR`, `SKIP_FIREWALL=1`, `SKIP_CLONE=1`, `SKIP_UP=1
 
 | Serviço | Papel | Publicado na VPS |
 | --- | --- | --- |
-| `api` | FastAPI + Alembic na subida | `8000` |
-| `frontend` | Next.js (`next start`) | `3000` |
+| `caddy` | Reverse proxy HTTPS (Let's Encrypt) | `80`, `443` |
+| `api` | FastAPI + Alembic na subida | não (`api:8000` interno) |
+| `frontend` | Next.js (`next start`) | não (`frontend:3000` interno) |
 | `worker` | Celery (um processo por fila) | não |
 | `redis` | Broker / resultados | não |
 
