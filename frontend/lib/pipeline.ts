@@ -7,14 +7,14 @@ export const PIPELINE_STEPS = [
     stages: ["created", "transcribing", "transcript_review"],
   },
   {
-    id: "scenes",
-    label: "Cenas",
-    stages: ["scene_planning", "scene_review", "generating_media", "media_review"],
-  },
-  {
     id: "audio",
     label: "Áudio",
     stages: ["audio_stage", "audio_review"],
+  },
+  {
+    id: "scenes",
+    label: "Cenas",
+    stages: ["scene_planning", "scene_review", "generating_media", "media_review"],
   },
   {
     id: "render",

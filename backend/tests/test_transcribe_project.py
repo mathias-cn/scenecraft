@@ -5,7 +5,7 @@ from uuid import uuid4
 import pytest
 
 from app.core.source_downloader import SourceDownloadError, load_audio, load_uploaded_source
-from app.models.enums import AudioTrackSource, ProjectStage, SourceType
+from app.models.enums import AudioTrackSource, ProjectStage, ProjectStatus, SourceType
 from app.providers.transcription_client import Segment, TranscriptionError
 from app.core.transcribe_project import transcribe_project
 from app.core.youtube_captions import (
@@ -317,6 +317,41 @@ def test_transcribe_project_youtube_uses_caption_api_without_whisper(monkeypatch
     assert db.added[0].start_ms == 0
     assert db.added[0].end_ms == 1500
     assert db.added[1].text_original == "how are you"
+
+
+def test_transcribe_youtube_caption_api_auto_advances_to_audio_stage(monkeypatch):
+    project = _project(
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        target_language="en",
+        current_stage=ProjectStage.TRANSCRIBING,
+        status=ProjectStatus.RUNNING,
+        automation_config={"auto_transcribe": True},
+        audio_tracks=[],
+        scenes=[],
+        transcript_segments=[],
+        video_assemblies=[],
+        thumbnails=[],
+        descriptions=[],
+    )
+    db = RecordingDB(project)
+    captions = YoutubeCaptionResult(
+        segments=[Segment(start_ms=0, end_ms=1500, text="hello there", language="en")],
+        language="en",
+        video_id="dQw4w9WgXcQ",
+    )
+    monkeypatch.setattr("app.core.transcribe_project.fetch_youtube_captions", lambda *_a, **_k: captions)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.load_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve baixar áudio")),
+    )
+    monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_CAPTION_API
+    assert project.current_stage is ProjectStage.AUDIO_STAGE
+    assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
 
 
 def test_transcribe_project_youtube_caption_api_still_translates(monkeypatch):

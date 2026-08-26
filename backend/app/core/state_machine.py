@@ -20,12 +20,12 @@ LINEAR_STAGES: tuple[ProjectStage, ...] = (
     ProjectStage.CREATED,
     ProjectStage.TRANSCRIBING,
     ProjectStage.TRANSCRIPT_REVIEW,
+    ProjectStage.AUDIO_STAGE,
+    ProjectStage.AUDIO_REVIEW,
     ProjectStage.SCENE_PLANNING,
     ProjectStage.SCENE_REVIEW,
     ProjectStage.GENERATING_MEDIA,
     ProjectStage.MEDIA_REVIEW,
-    ProjectStage.AUDIO_STAGE,
-    ProjectStage.AUDIO_REVIEW,
     ProjectStage.RENDERING,
     ProjectStage.RENDER_REVIEW,
     ProjectStage.THUMBNAIL_STAGE,
@@ -360,9 +360,10 @@ def advance_stage(
             )
 
         if nxt is ProjectStage.AUDIO_STAGE and should_skip_audio_stage(project):
+            # reuse_original_audio só vale para upload_audio: pula áudio e vai às cenas.
             attach_original_audio_for_render(session, project)
-            project.current_stage = ProjectStage.RENDERING
-            nxt = ProjectStage.RENDERING
+            project.current_stage = ProjectStage.SCENE_PLANNING
+            nxt = ProjectStage.SCENE_PLANNING
             project.updated_at = _now()
             return _dispatch_or_pause(session, project, expected, nxt, auto_advanced=True)
 

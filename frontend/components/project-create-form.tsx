@@ -208,6 +208,7 @@ export function ProjectCreateForm() {
           </label>
         )}
 
+        {/* reuse_original_audio só existe para upload de áudio; YouTube não baixa original. */}
         {sourceType === "upload_audio" ? (
           <label className="mt-4 flex items-start gap-3 text-sm text-white/80">
             <input
@@ -242,7 +243,7 @@ export function ProjectCreateForm() {
             <span className="mt-2 block font-mono text-[10px] font-normal tracking-wide text-white/30 normal-case">
               {audioGenerationMode === "elevenlabs"
                 ? "Narração gerada na etapa de áudio, com escolha de voz."
-                : "Você envia o áudio final na etapa de áudio; o Whisper realinha os tempos."}
+                : "Você envia o áudio final na etapa de áudio; as cenas usam a duração desse arquivo."}
             </span>
           </label>
         )}

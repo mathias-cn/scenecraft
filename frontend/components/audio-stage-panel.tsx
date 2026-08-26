@@ -66,8 +66,8 @@ function ElevenLabsPanel({ project, onUpdated }: AudioStagePanelProps) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-white/45">
-        Escolha a voz da ElevenLabs. Depois da geração, o áudio é re-transcrito para alinhar os
-        tempos das cenas.
+        Escolha a voz da ElevenLabs. Depois da geração, o pipeline planeja as cenas com a duração
+        deste áudio.
       </p>
       <label className="label-tech block">
         Voz
@@ -118,8 +118,8 @@ function UploadAudioPanel({ project, onUpdated }: AudioStagePanelProps) {
   return (
     <div className="space-y-4">
       <p className="text-sm text-white/45">
-        Envie o áudio final. Ele será re-transcrito (Whisper) para alinhar os timestamps das cenas
-        antes do render.
+        Envie o áudio final. As cenas a seguir usam a duração deste arquivo (ffprobe), sem baixar o
+        YouTube.
       </p>
       <label className="label-tech block">
         Arquivo de áudio

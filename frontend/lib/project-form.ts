@@ -54,6 +54,11 @@ export const AUTOMATION_TOGGLES = [
     pause: "transcript_review",
   },
   {
+    key: "auto_audio",
+    label: "Áudio",
+    pause: "audio_review",
+  },
+  {
     key: "auto_scene_planning",
     label: "Planejamento de cenas",
     pause: "scene_review",
@@ -62,11 +67,6 @@ export const AUTOMATION_TOGGLES = [
     key: "auto_media_gen",
     label: "Geração de mídia",
     pause: "media_review",
-  },
-  {
-    key: "auto_audio",
-    label: "Áudio",
-    pause: "audio_review",
   },
   {
     key: "auto_render",

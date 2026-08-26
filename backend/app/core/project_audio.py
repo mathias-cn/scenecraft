@@ -71,6 +71,11 @@ def final_narration_track(project: Project) -> AudioTrack | None:
     return None
 
 
+def finalized_audio_track(project: Project) -> AudioTrack | None:
+    """Áudio já produzido no estágio de áudio (TTS/upload) ou original reaproveitado."""
+    return final_narration_track(project) or original_audio_track(project)
+
+
 def persist_original_audio(session: Session, project: Project, audio_path: str | Path) -> AudioTrack:
     """Envia o áudio extraído na transcrição para o R2 e grava audio_tracks.source=original."""
     existing = original_audio_track(project)
@@ -128,7 +133,10 @@ def set_final_audio(session: Session, project: Project, file_url: str, source: s
 
 
 def attach_original_audio_for_render(session: Session, project: Project) -> str:
-    """Copia o áudio original (transcrição) para o render, sem re-transcrever."""
+    """Copia o áudio original (upload) para o render, sem re-transcrever.
+
+    Não baixa YouTube: `youtube_link` não tem áudio original reaproveitável.
+    """
     track = original_audio_track(project)
     url = (track.file_url if track is not None else "") or ""
     if not url.strip():
@@ -137,7 +145,16 @@ def attach_original_audio_for_render(session: Session, project: Project) -> str:
     return url
 
 
+def _is_youtube_source(project: Project) -> bool:
+    value = getattr(project.source_type, "value", project.source_type)
+    return str(value) == SourceType.YOUTUBE_LINK.value
+
+
 def _extract_original_audio(session: Session, project: Project) -> str:
+    if _is_youtube_source(project):
+        raise ProjectAudioError(
+            "youtube_link não tem áudio original para reaproveitar; use ElevenLabs ou upload próprio"
+        )
     import tempfile
 
     from app.core.source_downloader import load_audio

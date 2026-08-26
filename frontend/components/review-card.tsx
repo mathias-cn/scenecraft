@@ -53,7 +53,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
             : isMediaReview
               ? "Confira a imagem de cada cena. Regenerar refaz só aquela cena; ao aprovar, o pipeline segue."
               : isAudioStage
-                ? "Defina o áudio final. Em seguida o Whisper realinha os tempos das cenas."
+                ? "Defina o áudio final. Em seguida o pipeline planeja as cenas com a duração deste arquivo."
                 : isRenderReview
                   ? "Assista ao vídeo final. Regenerar render refaz a montagem (reusa clipes em cache); ao aprovar, o pipeline segue."
                   : isThumbnailStage

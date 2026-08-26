@@ -117,7 +117,7 @@ def test_retranscribe_and_align_updates_scene_times(monkeypatch, tmp_path):
     assert result["advanced"] is True
     assert scene.start_ms == 0
     assert scene.end_ms == 1200
-    assert project.current_stage is ProjectStage.RENDERING
+    assert project.current_stage is ProjectStage.SCENE_PLANNING
     assert project.video_assemblies[0].render_config["audio_url"] == project.audio_tracks[0].file_url
 
 

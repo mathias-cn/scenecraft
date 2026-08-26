@@ -60,15 +60,15 @@ def test_should_skip_only_for_upload_audio_flag():
     assert should_skip_audio_stage(upload_off) is False
 
 
-def test_media_review_pauses_on_audio_stage_for_input(monkeypatch):
+def test_transcript_review_pauses_on_audio_stage_for_input(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
     project = _project(
-        current_stage=ProjectStage.MEDIA_REVIEW,
+        current_stage=ProjectStage.TRANSCRIPT_REVIEW,
         status=ProjectStatus.PAUSED_FOR_REVIEW,
         automation_config={"audio_generation_mode": "elevenlabs"},
     )
     db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.MEDIA_REVIEW, db=db)
+    result = advance_stage(project.id, ProjectStage.TRANSCRIPT_REVIEW, db=db)
     assert result.to_stage is ProjectStage.AUDIO_STAGE
     assert result.paused_for_review is True
     assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
@@ -76,7 +76,7 @@ def test_media_review_pauses_on_audio_stage_for_input(monkeypatch):
     assert db.added == []
 
 
-def test_reuse_original_audio_skips_to_rendering(monkeypatch):
+def test_reuse_original_audio_skips_to_scene_planning(monkeypatch):
     enqueued = []
     monkeypatch.setattr(
         "app.core.state_machine.enqueue_job",
@@ -87,7 +87,7 @@ def test_reuse_original_audio_skips_to_rendering(monkeypatch):
         file_url="https://cdn.example.com/original.mp3",
     )
     project = _project(
-        current_stage=ProjectStage.MEDIA_REVIEW,
+        current_stage=ProjectStage.TRANSCRIPT_REVIEW,
         source_type=SourceType.UPLOAD_AUDIO,
         source_ref="s3://bucket/voice.mp3",
         automation_config={"reuse_original_audio": True},
@@ -95,13 +95,13 @@ def test_reuse_original_audio_skips_to_rendering(monkeypatch):
         video_assemblies=[],
     )
     db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.MEDIA_REVIEW, db=db)
-    assert result.to_stage is ProjectStage.RENDERING
+    result = advance_stage(project.id, ProjectStage.TRANSCRIPT_REVIEW, db=db)
+    assert result.to_stage is ProjectStage.SCENE_PLANNING
     assert result.paused_for_review is False
     assert result.auto_advanced is True
-    assert project.current_stage is ProjectStage.RENDERING
+    assert project.current_stage is ProjectStage.SCENE_PLANNING
     assert project.status is ProjectStatus.RUNNING
-    assert enqueued == ["render"]
+    assert enqueued == ["scene_planning"]
     assembly = next(item for item in db.added if getattr(item, "render_config", None))
     assert assembly.render_config["audio_url"] == "https://cdn.example.com/original.mp3"
     assert assembly.render_config["audio_source"] == "original"

@@ -244,50 +244,49 @@ def test_project_audio_duration_uses_ffprobe_not_last_segment(monkeypatch):
     assert project_audio_duration_ms(project, segments) == 5123
 
 
-def test_project_audio_duration_raises_when_source_unavailable(monkeypatch):
-    from app.core.source_downloader import SourceDownloadError
-
-    project = SimpleNamespace(id=uuid4(), audio_tracks=[], source_ref="")
-    monkeypatch.setattr(
-        "app.core.source_downloader.load_audio",
-        lambda *_a, **_k: (_ for _ in ()).throw(SourceDownloadError("ainda sem arquivo")),
-    )
-    with pytest.raises(ScenePlanningError, match="áudio real ainda não disponível"):
+def test_project_audio_duration_raises_when_no_finalized_track():
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[])
+    with pytest.raises(ScenePlanningError, match="sem áudio finalizado"):
         project_audio_duration_ms(project, [SimpleNamespace(end_ms=4000)])
 
 
-def test_project_audio_duration_probes_source_when_no_track(monkeypatch, tmp_path):
-    audio = tmp_path / "source.mp3"
-    audio.write_bytes(b"x")
-    project = SimpleNamespace(id=uuid4(), audio_tracks=[])
-    persisted = []
-
-    monkeypatch.setattr("app.core.source_downloader.load_audio", lambda *_a, **_k: audio)
-    monkeypatch.setattr(
-        "app.core.project_audio.persist_original_audio",
-        lambda db, proj, path: persisted.append((db, proj, path)) or SimpleNamespace(file_url="s3://b/o.mp3"),
+def test_project_audio_duration_does_not_download_youtube_source(monkeypatch):
+    project = SimpleNamespace(
+        id=uuid4(),
+        source_type="youtube_link",
+        source_ref="https://youtu.be/dQw4w9WgXcQ",
+        audio_tracks=[],
     )
-    monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", lambda path: 7777 if path == audio else 0)
-    assert project_audio_duration_ms(project, [SimpleNamespace(end_ms=4000)], db=object()) == 7777
-    assert persisted
+
+    def boom(*_a, **_k):
+        raise AssertionError("scene planning não deve chamar yt-dlp / load_audio")
+
+    monkeypatch.setattr("app.core.source_downloader.load_audio", boom)
+    monkeypatch.setattr("app.core.source_downloader.download_from_youtube", boom)
+    with pytest.raises(ScenePlanningError, match="sem áudio finalizado"):
+        project_audio_duration_ms(project)
 
 
 def test_measure_project_audio_duration_downloads_and_probes(monkeypatch):
     project = SimpleNamespace(
         id=uuid4(),
-        audio_tracks=[SimpleNamespace(source="original", file_url="s3://bucket/clip.mp3")],
+        source_type="youtube_link",
+        audio_tracks=[SimpleNamespace(source="generated", file_url="s3://bucket/narration.mp3")],
     )
+    load_calls: list = []
 
     def fake_download(url, local_path):
-        assert url == "s3://bucket/clip.mp3"
+        assert url == "s3://bucket/narration.mp3"
         destination = Path(local_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes(b"x")
         return destination
 
+    monkeypatch.setattr("app.core.source_downloader.load_audio", lambda *_a, **_k: load_calls.append(1))
     monkeypatch.setattr("app.core.plan_scenes._download_audio", fake_download)
     monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", lambda _path: 5123)
     assert measure_project_audio_duration_ms(project) == 5123
+    assert load_calls == []
 
 
 def test_celery_task_is_registered_with_project_id_signature():

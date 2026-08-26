@@ -59,8 +59,11 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
     """Obtém o transcript, traduz se preciso, grava segmentos e avança TRANSCRIBING.
 
     YouTube (`youtube_link`) tenta legendas oficiais primeiro (`caption_api`);
-    se falhar, cai no download yt-dlp + Whisper (`whisper_fallback`). Uploads
-    vão direto para Whisper (`whisper`).
+    se falhar, cai no download yt-dlp + Whisper (`whisper_fallback`) — único
+    uso restante do yt-dlp. Uploads vão direto para Whisper (`whisper`).
+
+    O avanço de TRANSCRIBING leva a TRANSCRIPT_REVIEW e, com auto_transcribe,
+    ao AUDIO_STAGE (não mais a SCENE_PLANNING).
     """
     session, owns = _session(db)
     try:

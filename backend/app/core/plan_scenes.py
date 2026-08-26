@@ -13,7 +13,7 @@ from uuid import UUID
 from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
-from app.core.project_audio import final_narration_track, original_audio_track
+from app.core.project_audio import finalized_audio_track
 from app.core.project_cast import enrich_visual_prompt, load_project_character, load_project_style
 from app.core.state_machine import ProjectNotFound
 from app.models.enums import MediaType, SceneStatus
@@ -154,36 +154,16 @@ def _probe_audio_file(url: str) -> int:
         ) from exc
 
 
-def _probe_source_audio(project: Project, db: Session | None) -> int:
-    """Baixa o áudio de origem (bloqueia até o arquivo existir) e mede com ffprobe."""
-    from app.core.project_audio import persist_original_audio
-    from app.core.source_downloader import SourceDownloadError, load_audio
-
-    try:
-        with tempfile.TemporaryDirectory(prefix="scenecraft-scene-dur-src-") as tmp:
-            path = load_audio(project, Path(tmp))
-            if db is not None:
-                persist_original_audio(db, project, path)
-            return ffprobe_duration_ms(path)
-    except ScenePlanningError:
-        raise
-    except SourceDownloadError as exc:
-        raise ScenePlanningError(
-            f"áudio real ainda não disponível para ffprobe: {exc}"
-        ) from exc
-    except Exception as exc:
-        raise ScenePlanningError(
-            f"não foi possível obter a duração real do áudio do projeto {project.id}"
-        ) from exc
-
-
 def measure_project_audio_duration_ms(project: Project, db: Session | None = None) -> int:
-    """Duração do arquivo real via ffprobe. Se ainda não houver track, baixa a origem e espera o probe."""
-    track = original_audio_track(project) or final_narration_track(project)
+    """Duração do áudio finalizado (estágio de áudio) via ffprobe. Sem yt-dlp."""
+    del db
+    track = finalized_audio_track(project)
     url = (getattr(track, "file_url", None) or "").strip() if track is not None else ""
-    if url:
-        return _probe_audio_file(url)
-    return _probe_source_audio(project, db)
+    if not url:
+        raise ScenePlanningError(
+            "projeto sem áudio finalizado para medir duração; conclua o estágio de áudio antes"
+        )
+    return _probe_audio_file(url)
 
 
 def project_audio_duration_ms(

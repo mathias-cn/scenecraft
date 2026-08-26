@@ -29,7 +29,10 @@ def test_parse_stage_accepts_enum_and_names():
 def test_linear_next_follows_declared_order():
     assert linear_next(ProjectStage.CREATED) is ProjectStage.TRANSCRIBING
     assert linear_next(ProjectStage.TRANSCRIBING) is ProjectStage.TRANSCRIPT_REVIEW
-    assert linear_next(ProjectStage.TRANSCRIPT_REVIEW) is ProjectStage.SCENE_PLANNING
+    assert linear_next(ProjectStage.TRANSCRIPT_REVIEW) is ProjectStage.AUDIO_STAGE
+    assert linear_next(ProjectStage.AUDIO_STAGE) is ProjectStage.AUDIO_REVIEW
+    assert linear_next(ProjectStage.AUDIO_REVIEW) is ProjectStage.SCENE_PLANNING
+    assert linear_next(ProjectStage.MEDIA_REVIEW) is ProjectStage.RENDERING
     assert linear_next(ProjectStage.DESCRIPTION_STAGE) is ProjectStage.COMPLETED
     assert linear_next(ProjectStage.COMPLETED) is None
     assert linear_next(ProjectStage.FAILED) is None
@@ -40,6 +43,8 @@ def test_linear_next_follows_declared_order():
     [
         (ProjectStage.CREATED, ProjectStage.TRANSCRIBING, True),
         (ProjectStage.TRANSCRIBING, ProjectStage.TRANSCRIPT_REVIEW, True),
+        (ProjectStage.TRANSCRIPT_REVIEW, ProjectStage.AUDIO_STAGE, True),
+        (ProjectStage.AUDIO_REVIEW, ProjectStage.SCENE_PLANNING, True),
         (ProjectStage.SCENE_PLANNING, ProjectStage.SCENE_REVIEW, True),
         (ProjectStage.GENERATING_MEDIA, ProjectStage.MEDIA_REVIEW, True),
         (ProjectStage.AUDIO_STAGE, ProjectStage.AUDIO_REVIEW, True),
@@ -172,7 +177,7 @@ def test_transcribing_pauses_on_review_without_auto_flag(monkeypatch):
     assert db.added == []
 
 
-def test_auto_transcribe_skips_review_and_starts_scene_planning(monkeypatch):
+def test_auto_transcribe_skips_review_and_pauses_on_audio_stage(monkeypatch):
     enqueued = []
     monkeypatch.setattr(
         "app.core.state_machine.enqueue_job",
@@ -185,11 +190,11 @@ def test_auto_transcribe_skips_review_and_starts_scene_planning(monkeypatch):
     db = FakeDB(project)
     result = advance_stage(project.id, ProjectStage.TRANSCRIBING, db=db)
     assert result.auto_advanced is True
-    assert result.to_stage is ProjectStage.SCENE_PLANNING
-    assert result.paused_for_review is False
-    assert project.current_stage is ProjectStage.SCENE_PLANNING
-    assert project.status is ProjectStatus.RUNNING
-    assert enqueued == ["scene_planning"]
+    assert result.to_stage is ProjectStage.AUDIO_STAGE
+    assert result.paused_for_review is True
+    assert project.current_stage is ProjectStage.AUDIO_STAGE
+    assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
+    assert enqueued == []
 
 
 def test_manual_review_resume_dispatches_next_work(monkeypatch):
@@ -204,8 +209,9 @@ def test_manual_review_resume_dispatches_next_work(monkeypatch):
     )
     db = FakeDB(project)
     result = advance_stage(project.id, ProjectStage.TRANSCRIPT_REVIEW, db=db)
-    assert result.to_stage is ProjectStage.SCENE_PLANNING
-    assert enqueued == ["scene_planning"]
+    assert result.to_stage is ProjectStage.AUDIO_STAGE
+    assert result.paused_for_review is True
+    assert enqueued == []
 
 
 def test_description_stage_completes_without_upload(monkeypatch):
@@ -410,9 +416,9 @@ def test_unpaid_render_still_dispatches_when_daily_limit_reached(monkeypatch):
         raise DailyCostLimitReached(Decimal("5"), Decimal("1"))
 
     monkeypatch.setattr("app.core.daily_budget.assert_paid_job_allowed", deny)
-    project = _project(current_stage=ProjectStage.AUDIO_REVIEW)
+    project = _project(current_stage=ProjectStage.MEDIA_REVIEW)
     db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.AUDIO_REVIEW, db=db)
+    result = advance_stage(project.id, ProjectStage.MEDIA_REVIEW, db=db)
     assert result.paused_for_cost_limit is False
     assert result.to_stage is ProjectStage.RENDERING
     assert project.status is ProjectStatus.RUNNING

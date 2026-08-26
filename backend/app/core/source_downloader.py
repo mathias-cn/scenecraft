@@ -1,4 +1,10 @@
-"""Carrega o áudio de origem do projeto (YouTube ou arquivo já enviado).
+"""Carrega o áudio de origem do projeto para transcrição.
+
+yt-dlp só entra neste módulo, e só como fallback da transcrição de
+`youtube_link` quando o youtube-transcript-api não acha legendas. Não use
+`load_audio` / `download_from_youtube` para reaproveitar áudio original nem
+para medir duração — o estágio de áudio já produziu o arquivo, e o scene
+planning lê essa faixa via ffprobe.
 
 O YouTube trata downloaders como scrapers e muda as defesas com frequência
 (nsig, PO Token, fingerprint de TLS, bloqueio de IP de VPS). Isso não é um
@@ -76,7 +82,7 @@ class YoutubeDownloadError(SourceDownloadError):
 
 
 def load_audio(project: Project, dest_dir: str | Path) -> Path:
-    """Devolve um caminho local com o áudio/vídeo pronto para o Whisper."""
+    """Áudio local para Whisper. YouTube: só o fallback da transcrição (sem legendas)."""
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
     source_type = project.source_type
@@ -104,7 +110,7 @@ def download_stored_source(source_ref: str, local_path: str) -> Path:
 
 
 def download_from_youtube(url: str, dest_dir: str | Path | None = None) -> Path:
-    """Extrai o áudio (mp3, com fallback wav) de um link do YouTube via yt-dlp."""
+    """yt-dlp: único fallback da transcrição quando não há legendas via caption_api."""
     cleaned = (url or "").strip()
     if not cleaned:
         raise YoutubeDownloadError("Informe um link do YouTube.", code="youtube_invalid_url")

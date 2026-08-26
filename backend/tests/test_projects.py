@@ -185,11 +185,21 @@ def test_project_create_accepts_audio_automation_fields():
     assert payload.automation_config["audio_generation_mode"] == "elevenlabs"
 
 
-def test_project_create_forces_reuse_false_unless_upload_audio():
+def test_project_create_rejects_reuse_original_audio_for_youtube():
+    with pytest.raises(ValidationError, match="reuse_original_audio"):
+        ProjectCreate(
+            title="clip",
+            source_type=SourceType.YOUTUBE_LINK,
+            source_ref="https://youtu.be/x",
+            automation_config={"reuse_original_audio": True, "audio_generation_mode": "user_upload"},
+        )
+
+
+def test_project_create_forces_reuse_false_for_upload_video():
     payload = ProjectCreate(
         title="clip",
-        source_type=SourceType.YOUTUBE_LINK,
-        source_ref="https://youtu.be/x",
+        source_type=SourceType.UPLOAD_VIDEO,
+        source_ref="s3://bucket/a.mp4",
         automation_config={"reuse_original_audio": True, "audio_generation_mode": "user_upload"},
     )
     assert payload.automation_config["reuse_original_audio"] is False

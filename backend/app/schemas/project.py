@@ -120,6 +120,17 @@ class ProjectCreate(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def reject_reuse_original_audio_for_youtube(self):
+        config = dict(self.automation_config or {})
+        reuse = config.get("reuse_original_audio") in _TRUE_VALUES
+        if self.source_type is SourceType.YOUTUBE_LINK and reuse:
+            raise ValueError(
+                "reuse_original_audio não é permitido para youtube_link: "
+                "não há áudio original baixado. Escolha ElevenLabs ou upload próprio"
+            )
+        return self
+
+    @model_validator(mode="after")
     def normalize_image_provider(self):
         config = dict(self.automation_config)
         if self.source_type is not SourceType.UPLOAD_AUDIO:

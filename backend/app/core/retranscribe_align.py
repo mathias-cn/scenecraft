@@ -28,7 +28,7 @@ _AUDIO_HOPS = frozenset({ProjectStage.AUDIO_STAGE, ProjectStage.AUDIO_REVIEW})
 
 
 def retranscribe_and_align(project_id: str | UUID, db: Session | None = None) -> dict:
-    """Whisper no áudio final + SequenceMatcher; avança para RENDERING (exceto reuse)."""
+    """Whisper no áudio final + SequenceMatcher; avança para SCENE_PLANNING (exceto reuse)."""
     session, owns = _session(db)
     try:
         pid = project_id if isinstance(project_id, UUID) else UUID(str(project_id))
@@ -65,12 +65,13 @@ def retranscribe_and_align(project_id: str | UUID, db: Session | None = None) ->
         )
         original = list(getattr(project, "transcript_segments", None) or [])
         use_translated = bool(language_code(getattr(project, "target_language", None)))
-        spans = align_scene_times(scenes, original, segments, use_translated=use_translated)
-        for scene, (start_ms, end_ms) in zip(scenes, spans):
-            scene.start_ms = start_ms
-            scene.end_ms = end_ms
+        if scenes:
+            spans = align_scene_times(scenes, original, segments, use_translated=use_translated)
+            for scene, (start_ms, end_ms) in zip(scenes, spans):
+                scene.start_ms = start_ms
+                scene.end_ms = end_ms
         session.flush()
-        advanced = _advance_to_rendering(session, project)
+        advanced = _advance_past_audio(session, project)
         if owns:
             session.commit()
         return {
@@ -90,8 +91,8 @@ def retranscribe_and_align(project_id: str | UUID, db: Session | None = None) ->
             session.close()
 
 
-def _advance_to_rendering(session: Session, project: Project) -> bool:
-    """AUDIO_STAGE → AUDIO_REVIEW → RENDERING, sem pausar para review de áudio."""
+def _advance_past_audio(session: Session, project: Project) -> bool:
+    """AUDIO_STAGE → AUDIO_REVIEW → SCENE_PLANNING, sem pausar para review de áudio."""
     hops = 0
     while hops < 4:
         try:
@@ -99,14 +100,14 @@ def _advance_to_rendering(session: Session, project: Project) -> bool:
         except Exception:
             return hops > 0
         if current not in _AUDIO_HOPS:
-            return hops > 0 or current is ProjectStage.RENDERING
+            return hops > 0 or current is ProjectStage.SCENE_PLANNING
         try:
             advance_stage(project.id, current, db=session)
         except IllegalTransition:
             return hops > 0
         hops += 1
     try:
-        return parse_stage(project.current_stage) is ProjectStage.RENDERING
+        return parse_stage(project.current_stage) is ProjectStage.SCENE_PLANNING
     except Exception:
         return hops > 0
 
