@@ -173,3 +173,7 @@ npm run dev
 ```
 
 O dashboard espera a API em `NEXT_PUBLIC_API_URL` (padrão `http://localhost:8000`).
+
+## Deploy em VPS (Ubuntu)
+
+Produção usa `docker-compose.prod.yml` (sem Postgres local, Redis só na rede interna, frontend com `next start`). Guia, firewall ufw e script: [`deploy/README.md`](deploy/README.md).
