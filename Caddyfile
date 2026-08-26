@@ -1,7 +1,7 @@
-scenecraft.mazting.com {
+scenecraft.mazting.studio {
     reverse_proxy frontend:3000
 }
 
-api.mazting.com {
+api.mazting.studio {
     reverse_proxy api:8000
 }

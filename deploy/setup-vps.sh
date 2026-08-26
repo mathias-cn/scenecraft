@@ -114,7 +114,7 @@ fi
 
 if grep -qE '^NEXT_PUBLIC_API_URL=http://localhost' .env || grep -qE '^CORS_ORIGINS=http://localhost' .env; then
   echo "    Aviso: CORS_ORIGINS / NEXT_PUBLIC_API_URL ainda apontam para localhost."
-  echo "    Em produção use HTTPS via Caddy (ex.: https://scenecraft.mazting.com e https://api.mazting.com)."
+  echo "    Em produção use HTTPS via Caddy (ex.: https://scenecraft.mazting.studio e https://api.mazting.studio)."
 fi
 
 echo "==> 5/5 Migrations (Alembic no Supabase) + docker compose"
@@ -128,8 +128,8 @@ docker compose -f docker-compose.prod.yml up -d --build
 
 echo
 echo "Pronto. A API aplica alembic upgrade head na subida. Só o Caddy publica 80/443."
-echo "  Frontend: https://scenecraft.mazting.com"
-echo "  API:      https://api.mazting.com/health"
+echo "  Frontend: https://scenecraft.mazting.studio"
+echo "  API:      https://api.mazting.studio/health"
 echo "  Logs:     docker compose -f ${APP_DIR}/docker-compose.prod.yml logs -f caddy api worker frontend"
 echo
 echo "Se o painel chamar a API no host errado, ajuste NEXT_PUBLIC_API_URL no .env e reconstrua o frontend:"

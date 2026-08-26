@@ -13,7 +13,7 @@ Portas públicas: **22** (SSH), **80** e **443** (Caddy). API e frontend só na 
 - Chaves OpenAI, ElevenLabs, Higgsfield e S3/R2
 - Firewall do provedor (Hetzner Cloud Firewall, Security Group, etc.) alinhado ao ufw: as mesmas portas precisam estar abertas lá também
 
-Os DNS de `scenecraft.mazting.com` e `api.mazting.com` devem apontar para o IPv4 da VPS (Caddy emite o certificado Let's Encrypt).
+Os DNS de `scenecraft.mazting.studio` e `api.mazting.studio` devem apontar para o IPv4 da VPS (Caddy emite o certificado Let's Encrypt).
 
 ## 2. Docker e Docker Compose
 
@@ -88,8 +88,8 @@ Preencha as URIs do Supabase e as chaves. Em produção **não** use `localhost`
 | `DATABASE_URL` | Pooler Supabase `:6543` com `sslmode=require` |
 | `DATABASE_URL_MIGRATIONS` | Conexão direta Supabase `:5432` com `sslmode=require` |
 | `REDIS_URL` | Deixe `redis://redis:6379/0` (hostname do serviço Compose) |
-| `CORS_ORIGINS` | `https://scenecraft.mazting.com` (várias origens: separado por vírgula) |
-| `NEXT_PUBLIC_API_URL` | `https://api.mazting.com` |
+| `CORS_ORIGINS` | `https://scenecraft.mazting.studio` (várias origens: separado por vírgula) |
+| `NEXT_PUBLIC_API_URL` | `https://api.mazting.studio` |
 
 `NEXT_PUBLIC_API_URL` entra no **build** da imagem do frontend. Se mudar o domínio depois, reconstrua o serviço `frontend`.
 
@@ -118,11 +118,11 @@ Conferir:
 
 ```bash
 docker compose -f docker-compose.prod.yml ps
-curl -fsS "https://api.mazting.com/health"
-curl -fsS -o /dev/null -w "%{http_code}\n" "https://scenecraft.mazting.com"
+curl -fsS "https://api.mazting.studio/health"
+curl -fsS -o /dev/null -w "%{http_code}\n" "https://scenecraft.mazting.studio"
 ```
 
-No browser: `https://scenecraft.mazting.com` (UI) e `https://api.mazting.com/docs` (Swagger). Health interno, sem publicar portas:
+No browser: `https://scenecraft.mazting.studio` (UI) e `https://api.mazting.studio/docs` (Swagger). Health interno, sem publicar portas:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec api python -c "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:8000/health').read())"
