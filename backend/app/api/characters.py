@@ -60,6 +60,9 @@ async def parse_character_input(request: Request) -> CreateCharacterInput:
     return CreateCharacterInput(payload, None)
 
 
+CreateInputDep = Annotated[CreateCharacterInput, Depends(parse_character_input)]
+
+
 def _guard_paid_jobs(db) -> None:
     try:
         assert_paid_job_allowed(db)
