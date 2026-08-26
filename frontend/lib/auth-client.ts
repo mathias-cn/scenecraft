@@ -33,10 +33,6 @@ function isJwt(token: string): boolean {
 async function fetchAccessToken(): Promise<string | null> {
   const client = authClient as typeof authClient & {
     token?: () => Promise<{ data?: TokenResponse | null; error?: unknown }>;
-    $fetch: (
-      path: string,
-      init?: { method?: string },
-    ) => Promise<{ data?: TokenResponse | null; error?: unknown }>;
   };
 
   if (typeof client.token === "function") {
@@ -49,11 +45,13 @@ async function fetchAccessToken(): Promise<string | null> {
     }
   }
 
-  const fallback = await client.$fetch("/token", { method: "GET" });
+  // jwtClient() só tipa `jwks()`. GET /token existe no plugin de servidor;
+  // $fetch infere `data` como `{}`.
+  const fallback = await authClient.$fetch("/token", { method: "GET" });
   if (fallback.error) {
     return null;
   }
-  const token = fallback.data?.token;
+  const token = (fallback.data as TokenResponse | null | undefined)?.token;
   return token && isJwt(token) ? token : null;
 }
 
