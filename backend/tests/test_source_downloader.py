@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.source_downloader import (
+    YOUTUBE_PLAYER_CLIENTS,
     YoutubeDownloadError,
     classify_youtube_error,
     download_from_youtube,
@@ -72,6 +73,22 @@ def test_download_from_youtube_writes_mp3(monkeypatch, tmp_path):
     assert path.read_bytes() == b"ID3"
 
 
+def test_download_from_youtube_uses_player_clients_and_impersonate(monkeypatch, tmp_path):
+    seen: list[dict] = []
+
+    class CaptureYDL(FakeYDL):
+        def __init__(self, opts):
+            seen.append(opts)
+            super().__init__(opts)
+
+    _install_yt_dlp(monkeypatch, CaptureYDL)
+    download_from_youtube("https://youtu.be/abc123", dest_dir=tmp_path)
+    assert seen, "YoutubeDL should be constructed once"
+    opts = seen[0]
+    assert opts["extractor_args"]["youtube"]["player_client"] == list(YOUTUBE_PLAYER_CLIENTS)
+    assert str(opts["impersonate"]).startswith("chrome")
+
+
 @pytest.mark.parametrize(
     ("raw", "code", "snippet"),
     [
@@ -90,6 +107,14 @@ def test_download_from_youtube_writes_mp3(monkeypatch, tmp_path):
         ),
         ("ERROR: [youtube] Requested format is not available", "youtube_extractor_outdated", "formato"),
         ("ERROR: Only images are available for download", "youtube_extractor_outdated", "yt-dlp"),
+        (
+            "ERROR: unable to download video webpage: HTTP Error 403: Forbidden",
+            "youtube_blocked",
+            "bloqueou",
+        ),
+        ("ERROR: [youtube] abc: HTTP Error 403: Forbidden", "youtube_blocked", "servidor"),
+        ("ERROR: There is a PO Token required for this client", "youtube_blocked", "bloqueou"),
+        ("Sign in to confirm you're not a bot", "youtube_blocked", "bloqueou"),
     ],
 )
 def test_classify_youtube_error_messages_are_ui_ready(raw: str, code: str, snippet: str):
@@ -102,6 +127,13 @@ def test_classify_youtube_error_messages_are_ui_ready(raw: str, code: str, snipp
 def test_classify_youtube_error_keeps_geo_block_distinct_from_extractor_failure():
     err = classify_youtube_error(RuntimeError("This video is not available in your country"))
     assert err.code == "youtube_geo_blocked"
+
+
+def test_classify_youtube_error_403_is_not_a_private_or_public_hint():
+    err = classify_youtube_error(RuntimeError("HTTP Error 403: Forbidden"))
+    assert err.code == "youtube_blocked"
+    assert "público" not in err.ui_message.lower()
+    assert "privado" not in err.ui_message.lower()
 
 
 def test_download_from_youtube_maps_private_video(monkeypatch, tmp_path):

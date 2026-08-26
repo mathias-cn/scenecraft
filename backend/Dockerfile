@@ -14,10 +14,11 @@ RUN apt-get update \
     && pip install --no-cache-dir poetry
 
 COPY pyproject.toml poetry.lock ./
-# YouTube muda o nsig com frequência. Bump YTDLP_VERSION para invalidar o cache desta camada.
+# YouTube muda nsig / PO Token / TLS fingerprint com frequência.
+# Bump YTDLP_VERSION para invalidar o cache desta camada.
 ARG YTDLP_VERSION=2026.8.19
 RUN poetry install --no-ansi --no-root --only main \
-    && pip install --no-cache-dir --force-reinstall "yt-dlp[default,deno]==${YTDLP_VERSION}"
+    && pip install --no-cache-dir --force-reinstall "yt-dlp[default,deno,curl-cffi]==${YTDLP_VERSION}"
 
 COPY . .
 

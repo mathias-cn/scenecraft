@@ -138,13 +138,13 @@ docker compose down
 
 Não há Postgres neste arquivo: o banco é o projeto Supabase configurado no `.env`.
 
-O ingest de YouTube usa **yt-dlp**. O YouTube muda o algoritmo de assinatura (`nsig`) com frequência e quebra extratores antigos — isso não é um bug pontual, é manutenção recorrente. Atualize `yt-dlp` no `backend/pyproject.toml` / `backend/poetry.lock` **pelo menos uma vez por mês** (`cd backend && poetry update yt-dlp`) e reconstrua `api`/`worker` **sem cache** dessa camada:
+O ingest de YouTube usa **yt-dlp**. O YouTube trata downloaders como scrapers e muda as defesas com frequência (`nsig`, exigência de PO Token, fingerprint de TLS, bloqueio de IP de VPS). Isso **não é um bug pontual** — é manutenção recorrente, no mesmo espírito de atualizar o yt-dlp periodicamente. Quando o log mostrar `HTTP Error 403: Forbidden` (vídeo público, extração barrada no servidor), o ajuste costuma ser: nova versão do yt-dlp, outra cascata de `player_client` em `source_downloader.py`, impersonation via `curl-cffi`, ou um PO Token provider. Atualize `yt-dlp` no `backend/pyproject.toml` / `backend/poetry.lock` **pelo menos uma vez por mês** (`cd backend && poetry update yt-dlp`) e reconstrua `api`/`worker` **sem cache** dessa camada:
 
 ```bash
 docker compose build --no-cache api worker
 ```
 
-Em produção, o mesmo vale com `docker compose -f docker-compose.prod.yml build --no-cache api worker`. A partir de 2025/2026 o nsig também exige o extra `yt-dlp-ejs` e um runtime JS (incluídos via `yt-dlp[default,deno]`). Se o log mostrar `nsig extraction failed` / `Requested format is not available` / `Only images are available`, a versão do yt-dlp (ou o runtime JS) está desatualizada.
+Em produção, o mesmo vale com `docker compose -f docker-compose.prod.yml build --no-cache api worker`. A partir de 2025/2026 o nsig também exige o extra `yt-dlp-ejs` e um runtime JS; o fingerprint TLS usa `curl-cffi` (impersonate Chrome). Tudo isso entra via `yt-dlp[default,deno,curl-cffi]`. Se o log mostrar `nsig extraction failed` / `Requested format is not available` / `Only images are available`, a versão do yt-dlp (ou o runtime JS) está desatualizada. Se mostrar `HTTP Error 403: Forbidden` / PO Token, o YouTube bloqueou este servidor — tente de novo mais tarde ou use upload direto do arquivo.
 
 ## Variáveis de ambiente
 

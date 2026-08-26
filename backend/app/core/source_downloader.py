@@ -1,9 +1,12 @@
 """Carrega o áudio de origem do projeto (YouTube ou arquivo já enviado).
 
-O YouTube altera o algoritmo de assinatura (nsig) com frequência e quebra
-extratores antigos. Atualize `yt-dlp` no `pyproject.toml` / `poetry.lock` pelo
-menos uma vez por mês e reconstrua a imagem do backend sem cache dessa camada.
-Versões recentes também precisam de `yt-dlp-ejs` e de um runtime JS (Deno).
+O YouTube trata downloaders como scrapers e muda as defesas com frequência
+(nsig, PO Token, fingerprint de TLS, bloqueio de IP de VPS). Isso não é um
+bug pontual do SceneCraft: exige manutenção recorrente — atualizar `yt-dlp`,
+retocar `player_client` / impersonation, e às vezes um PO Token provider.
+Atualize `yt-dlp` no `pyproject.toml` / `poetry.lock` pelo menos uma vez por
+mês e reconstrua a imagem do backend sem cache dessa camada. Versões recentes
+também precisam de `yt-dlp-ejs`, Deno e `curl-cffi` (impersonate Chrome).
 """
 
 from __future__ import annotations
@@ -29,6 +32,13 @@ AUDIO_CODECS = ("mp3", "wav")
 
 logger = logging.getLogger(__name__)
 
+# Cascata de InnerTube clients (yt-dlp 2026.8.19). Ordem: menos dependência de
+# PO Token primeiro. `android_vr` ainda existe, mas desde 2026.08.17 o YouTube
+# responde 403 em todos os formatos desse client — por isso vai por último.
+# Se o 403 voltar, o próximo ajuste costuma ser esta lista, um PO Token
+# provider, ou o alvo de impersonate (ver `yt-dlp --help` / INNERTUBE_CLIENTS).
+YOUTUBE_PLAYER_CLIENTS = ("tv", "web_embedded", "web", "android_vr")
+
 # Sintomas clássicos de yt-dlp desatualizado (YouTube mudou o nsig).
 _EXTRACTOR_NEEDLES = (
     "nsig extraction failed",
@@ -36,6 +46,21 @@ _EXTRACTOR_NEEDLES = (
     "only images are available",
     "format is not available",
     "some formats may be missing",
+)
+
+# 403 / anti-bot / PO Token: o vídeo pode estar público; o servidor é que foi barrado.
+_YOUTUBE_BLOCKED_NEEDLES = (
+    "http error 403",
+    "403: forbidden",
+    "http 403",
+    "got http error 403",
+    "po token",
+    "gvs po token",
+    "confirm you're not a bot",
+    "confirm you are not a bot",
+    "confirm that you are not a bot",
+    "detected unusual traffic",
+    "unusual traffic from your computer",
 )
 
 
@@ -182,6 +207,12 @@ def classify_youtube_error(exc: BaseException) -> YoutubeDownloadError:
             "youtube_live",
         ),
         (
+            _YOUTUBE_BLOCKED_NEEDLES,
+            "O YouTube bloqueou a extração a partir deste servidor — "
+            "tente novamente mais tarde ou use upload direto do arquivo.",
+            "youtube_blocked",
+        ),
+        (
             ("video unavailable", "this video is unavailable", "unavailable"),
             "Este vídeo do YouTube está indisponível.",
             "youtube_unavailable",
@@ -210,15 +241,25 @@ def _yt_dlp_version() -> str:
         return "?"
 
 
-def _extract_youtube_audio(yt_dlp, url: str, dest: Path, codec: str) -> Path | None:
-    basename = "youtube_audio"
-    opts = {
+def _chrome_impersonate_target():
+    """Alvo Chrome para curl_cffi. String basta nos testes; a API real quer ImpersonateTarget."""
+    try:
+        from yt_dlp.networking.impersonate import ImpersonateTarget
+
+        return ImpersonateTarget.from_str("chrome")
+    except Exception:
+        return "chrome"
+
+
+def _youtube_dl_opts(dest: Path, codec: str, *, impersonate: bool) -> dict:
+    opts: dict = {
         "format": "bestaudio/best",
-        "outtmpl": str(dest / f"{basename}.%(ext)s"),
+        "outtmpl": str(dest / "youtube_audio.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
         "noprogress": True,
         "overwrites": True,
+        "extractor_args": {"youtube": {"player_client": list(YOUTUBE_PLAYER_CLIENTS)}},
         "postprocessors": [
             {
                 "key": "FFmpegExtractAudio",
@@ -227,8 +268,33 @@ def _extract_youtube_audio(yt_dlp, url: str, dest: Path, codec: str) -> Path | N
             }
         ],
     }
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
+    if impersonate:
+        opts["impersonate"] = _chrome_impersonate_target()
+    return opts
+
+
+def _extract_youtube_audio(yt_dlp, url: str, dest: Path, codec: str) -> Path | None:
+    basename = "youtube_audio"
+    last_init_error: BaseException | None = None
+    for impersonate in (True, False):
+        opts = _youtube_dl_opts(dest, codec, impersonate=impersonate)
+        try:
+            ydl_ctx = yt_dlp.YoutubeDL(opts)
+        except Exception as exc:  # noqa: BLE001 — constructor raises if curl_cffi is missing
+            last_init_error = exc
+            if impersonate:
+                logger.warning(
+                    "yt-dlp impersonate=chrome indisponível (%s); tentando sem impersonation",
+                    exc,
+                )
+                continue
+            raise
+        with ydl_ctx as ydl:
+            ydl.download([url])
+        break
+    else:
+        if last_init_error is not None:
+            raise last_init_error
     preferred = dest / f"{basename}.{codec}"
     if preferred.is_file():
         return preferred

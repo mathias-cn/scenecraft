@@ -155,7 +155,7 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
-O ingest de YouTube depende do **yt-dlp**. O YouTube quebra extratores antigos com frequência. Depois de um `poetry update yt-dlp` (ou se os logs mostrarem `nsig extraction failed` / `Requested format is not available`), reconstrua **sem cache** para não reaproveitar a camada do pip:
+O ingest de YouTube depende do **yt-dlp**. O YouTube trata downloaders como scrapers e muda as defesas com frequência (`nsig`, PO Token, TLS fingerprint, IP de VPS). Depois de um `poetry update yt-dlp` (ou se os logs mostrarem `nsig extraction failed` / `Requested format is not available` / `HTTP Error 403: Forbidden`), reconstrua **sem cache** para não reaproveitar a camada do pip. Um 403 com vídeo público não é link privado: é bloqueio anti-bot neste servidor — pode exigir outra cascata de `player_client`, impersonation (`curl-cffi`) ou PO Token, além da atualização mensal do yt-dlp.
 
 ```bash
 docker compose -f docker-compose.prod.yml build --no-cache api worker
