@@ -32,12 +32,12 @@ class FakeHTTP:
         self.gets = []
         self.posts = []
 
-    def get(self, url, headers=None, timeout=None):
-        self.gets.append((url, headers, timeout))
+    def get(self, url, headers=None, timeout=None, params=None):
+        self.gets.append((url, headers, timeout, params))
         return self.response
 
-    def post(self, url, headers=None, json=None, timeout=None):
-        self.posts.append((url, headers, json, timeout))
+    def post(self, url, headers=None, json=None, timeout=None, params=None):
+        self.posts.append((url, headers, json, timeout, params))
         return self.response
 
 
@@ -76,7 +76,8 @@ def test_list_voices_parses_api_payload(monkeypatch):
     )
     voices = list_voices(http=http)
     assert voices == [Voice(id="abc", name="Clara")]
-    assert http.gets[0][0].endswith("/v1/voices")
+    assert "/v2/voices" in http.gets[0][0]
+    assert http.gets[0][3]["page_size"] == 100
 
 
 def test_generate_speech_stub_without_key(monkeypatch):
@@ -120,4 +121,54 @@ def test_generate_speech_decodes_audio_and_timestamps(monkeypatch):
     assert body == audio
     assert stamps == [{"word": "Olá", "start_ms": 0, "end_ms": 400}]
     assert "/text-to-speech/voice-1/with-timestamps" in http.posts[0][0]
+    assert "output_format=mp3_44100_128" in http.posts[0][0]
     assert http.posts[0][2]["text"] == "Olá"
+    assert http.posts[0][2]["model_id"] == "eleven_multilingual_v2"
+
+
+def test_list_voices_follows_pagination(monkeypatch):
+    monkeypatch.setattr(
+        "app.providers.elevenlabs_client.settings",
+        SimpleNamespace(elevenlabs_api_key="sk-test"),
+    )
+
+    class PagingHTTP:
+        def __init__(self):
+            self.gets = []
+
+        def get(self, url, headers=None, timeout=None, params=None):
+            self.gets.append(params or {})
+            if len(self.gets) == 1:
+                return FakeResponse(
+                    json_body={
+                        "voices": [{"voice_id": "a", "name": "Ada"}],
+                        "has_more": True,
+                        "next_page_token": "page-2",
+                    }
+                )
+            return FakeResponse(
+                json_body={
+                    "voices": [{"voice_id": "b", "name": "Bea"}],
+                    "has_more": False,
+                }
+            )
+
+    http = PagingHTTP()
+    voices = list_voices(http=http)
+    assert [voice.id for voice in voices] == ["a", "b"]
+    assert http.gets[1]["next_page_token"] == "page-2"
+
+
+def test_generate_speech_surfaces_http_error(monkeypatch):
+    monkeypatch.setattr(
+        "app.providers.elevenlabs_client.settings",
+        SimpleNamespace(elevenlabs_api_key="sk-test"),
+    )
+    http = FakeHTTP(
+        FakeResponse(
+            json_body={"detail": {"status": "quota_exceeded", "message": "quota"}},
+            status_code=401,
+        )
+    )
+    with pytest.raises(ElevenLabsError, match="quota"):
+        generate_speech("Olá", "voice-1", http=http)
