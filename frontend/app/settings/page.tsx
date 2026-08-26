@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 import { DailyLimitForm } from "@/components/daily-limit-form";
-import { ApiError, getCostBudget } from "@/lib/api";
+import { ApiError, getCostBudget } from "@/lib/api.server";
 import { getApiBaseUrl } from "@/lib/config";
 
 export const dynamic = "force-dynamic";

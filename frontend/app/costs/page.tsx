@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import { CostBarChart, formatUsd } from "@/components/cost-bar-chart";
-import { ApiError, getCostSeries } from "@/lib/api";
+import { ApiError, getCostSeries } from "@/lib/api.server";
 import type { CostSeries } from "@/lib/types";
 
 export const dynamic = "force-dynamic";

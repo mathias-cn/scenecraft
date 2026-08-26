@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
+import { jwt } from "better-auth/plugins";
 import { Pool } from "pg";
 
 const UNAUTHORIZED_EMAIL_MESSAGE =
@@ -99,5 +100,17 @@ export const auth = betterAuth({
   onAPIError: {
     errorURL: "/login",
   },
-  plugins: [nextCookies()],
+  plugins: [
+    jwt({
+      jwt: {
+        issuer: process.env.BETTER_AUTH_URL,
+        audience: process.env.NEXT_PUBLIC_API_URL || "scenecraft-api",
+        expirationTime: "15m",
+        definePayload: ({ user }) => ({
+          email: user.email,
+        }),
+      },
+    }),
+    nextCookies(),
+  ],
 });

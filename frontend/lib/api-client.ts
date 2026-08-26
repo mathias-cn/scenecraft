@@ -18,6 +18,25 @@ function joinUrl(path: string): string {
   return `${base}${suffix}`;
 }
 
+function redirectToLogin(): never {
+  if (typeof window !== "undefined") {
+    const next = `${window.location.pathname}${window.location.search}`;
+    const login = next && next !== "/login" ? `/login?next=${encodeURIComponent(next)}` : "/login";
+    window.location.assign(login);
+    throw new ApiError(401, "Não autenticado");
+  }
+  throw new ApiError(401, "Não autenticado");
+}
+
+async function getBrowserAccessToken(): Promise<string> {
+  const { getSessionToken } = await import("./auth-client");
+  const token = await getSessionToken();
+  if (!token) {
+    redirectToLogin();
+  }
+  return token;
+}
+
 async function parseErrorMessage(response: Response): Promise<{ message: string; body: unknown }> {
   const text = await response.text();
   if (!text) {
@@ -51,6 +70,13 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   const headers = new Headers(init.headers);
   if (!isForm && !headers.has("Content-Type") && init.body != null) {
     headers.set("Content-Type", "application/json");
+  }
+  if (!headers.has("Authorization")) {
+    if (typeof window === "undefined") {
+      const { redirect } = await import("next/navigation");
+      redirect("/login");
+    }
+    headers.set("Authorization", `Bearer ${await getBrowserAccessToken()}`);
   }
 
   const response = await fetch(joinUrl(path), {

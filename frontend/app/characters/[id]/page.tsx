@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { CharacterPreview } from "@/components/character-preview";
-import { ApiError, getCharacter } from "@/lib/api";
+import { ApiError, getCharacter } from "@/lib/api.server";
 import { characterLabel } from "@/lib/character-ui";
 
 export const dynamic = "force-dynamic";

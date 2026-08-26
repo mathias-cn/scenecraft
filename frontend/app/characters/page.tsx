@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { ApiError, listCharacters } from "@/lib/api";
+import { ApiError, listCharacters } from "@/lib/api.server";
 import { characterLabel } from "@/lib/character-ui";
 import { formatCreatedAt } from "@/lib/project-ui";
 import type { Character } from "@/lib/types";

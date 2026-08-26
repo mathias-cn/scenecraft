@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 
 import { StatusBadge } from "@/components/status-badge";
-import { ApiError, listProjects } from "@/lib/api";
+import { ApiError, listProjects } from "@/lib/api.server";
 import { STAGE_LABEL, formatCreatedAt } from "@/lib/project-ui";
 import type { Project } from "@/lib/types";
 

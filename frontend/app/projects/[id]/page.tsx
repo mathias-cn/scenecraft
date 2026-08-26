@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import { ProjectDetailView } from "@/components/project-detail-view";
-import { ApiError, getProject } from "@/lib/api";
+import { ApiError, getProject } from "@/lib/api.server";
 
 const loadProject = cache(getProject);
 

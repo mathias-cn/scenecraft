@@ -23,12 +23,12 @@ export function generateTitles(draftTitle: string) {
   });
 }
 
-export function listProjects() {
-  return apiGet<Project[]>("/api/projects");
+export function listProjects(init?: RequestInit) {
+  return apiGet<Project[]>("/api/projects", init);
 }
 
-export function getProject(id: string) {
-  return apiGet<ProjectDetail>(`/api/projects/${id}`);
+export function getProject(id: string, init?: RequestInit) {
+  return apiGet<ProjectDetail>(`/api/projects/${id}`, init);
 }
 
 export function createProject(payload: ProjectCreate, file?: File | null) {
@@ -116,12 +116,12 @@ export function completeProject(id: string) {
   return apiPost<ProjectDetail>(`/api/projects/${id}/complete`);
 }
 
-export function getCostSeries() {
-  return apiGet<CostSeries>("/api/costs");
+export function getCostSeries(init?: RequestInit) {
+  return apiGet<CostSeries>("/api/costs", init);
 }
 
-export function getCostBudget() {
-  return apiGet<CostBudget>("/api/costs/budget");
+export function getCostBudget(init?: RequestInit) {
+  return apiGet<CostBudget>("/api/costs/budget", init);
 }
 
 export function patchCostBudget(dailyLimitUsd: number | null) {
@@ -145,13 +145,13 @@ export function deleteStyle(id: string) {
   return apiDelete<void>(`/api/styles/${id}`);
 }
 
-export function listCharacters(status?: CharacterStatus) {
+export function listCharacters(status?: CharacterStatus, init?: RequestInit) {
   const query = status ? `?status=${status}` : "";
-  return apiGet<Character[]>(`/api/characters${query}`);
+  return apiGet<Character[]>(`/api/characters${query}`, init);
 }
 
-export function getCharacter(id: string) {
-  return apiGet<Character>(`/api/characters/${id}`);
+export function getCharacter(id: string, init?: RequestInit) {
+  return apiGet<Character>(`/api/characters/${id}`, init);
 }
 
 export function createCharacter(
