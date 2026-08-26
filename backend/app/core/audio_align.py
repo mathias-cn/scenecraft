@@ -151,3 +151,40 @@ def align_scene_times(
         normalized_by_id[id(scene)] = (start_ms, end_ms)
         prev_end = end_ms
     return [normalized_by_id[id(scene)] for scene in scenes]
+
+
+def align_segment_times(
+    original_segments: Sequence[Any],
+    new_segments: Sequence[Segment],
+    *,
+    use_translated: bool = False,
+) -> list[tuple[int, int]]:
+    """Alinha cada segmento original ao whisper novo, reusando `align_scene_times`."""
+    from types import SimpleNamespace
+
+    ordered = sorted(
+        original_segments,
+        key=lambda item: int(getattr(item, "index", 0) or 0),
+    )
+    proxies = []
+    for segment in ordered:
+        idx = int(getattr(segment, "index", 0) or 0)
+        proxies.append(
+            SimpleNamespace(
+                index=idx,
+                start_ms=int(getattr(segment, "start_ms", 0) or 0),
+                end_ms=int(getattr(segment, "end_ms", 0) or 0),
+                source_segment_ids=[idx],
+                visual_prompt="",
+            )
+        )
+    spans = align_scene_times(
+        proxies,
+        original_segments,
+        new_segments,
+        use_translated=use_translated,
+    )
+    by_index = {
+        int(getattr(segment, "index", 0) or 0): span for segment, span in zip(ordered, spans)
+    }
+    return [by_index[int(getattr(item, "index", 0) or 0)] for item in original_segments]

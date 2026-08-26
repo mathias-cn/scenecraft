@@ -359,3 +359,38 @@ def test_thumbnail_prompt_uses_summary(monkeypatch):
     assert prompt.cost_usd > 0
     assert "misty forest" in captured[0]
     assert "red-coated heroine" in captured[0]
+
+
+def test_generate_script_returns_narration(monkeypatch):
+    from app.providers.llm_client import generate_script
+
+    captured: list[tuple[str, str]] = []
+
+    def fake_completion(system_prompt: str, user_content: str, *, model: str | None = None) -> dict:
+        captured.append((system_prompt, user_content))
+        return {"script": "A fotossíntese transforma luz em energia. As plantas crescem com isso."}
+
+    monkeypatch.setattr("app.providers.llm_client.structured_completion", fake_completion)
+    script = generate_script("fotossíntese", target_duration_minutes=2)
+    assert "plantas" in script.text.lower()
+    assert script.cost_usd is not None
+    assert "target_word_count" in captured[0][1]
+    assert "300" in captured[0][1]
+
+
+def test_generate_script_rejects_empty():
+    from app.providers.llm_client import generate_script
+
+    with pytest.raises(LLMError, match="vazio"):
+        generate_script("   ")
+
+
+def test_generate_script_requires_script_field(monkeypatch):
+    from app.providers.llm_client import generate_script
+
+    monkeypatch.setattr(
+        "app.providers.llm_client.structured_completion",
+        lambda *_a, **_k: {"titles": ["não é roteiro"]},
+    )
+    with pytest.raises(LLMJSONError, match="script"):
+        generate_script("tema")

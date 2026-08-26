@@ -1,4 +1,4 @@
-"""Re-transcreve o áudio final e realinha start_ms/end_ms das cenas."""
+"""Re-transcreve o áudio final e realinha start_ms/end_ms de cenas e segmentos."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.audio_align import align_scene_times
+from app.core.audio_align import align_scene_times, align_segment_times
 from app.core.project_audio import (
     ProjectAudioError,
     final_narration_track,
@@ -63,13 +63,22 @@ def retranscribe_and_align(project_id: str | UUID, db: Session | None = None) ->
             list(getattr(project, "scenes", None) or []),
             key=lambda item: int(getattr(item, "index", 0) or 0),
         )
-        original = list(getattr(project, "transcript_segments", None) or [])
+        original = sorted(
+            list(getattr(project, "transcript_segments", None) or []),
+            key=lambda item: int(getattr(item, "index", 0) or 0),
+        )
         use_translated = bool(language_code(getattr(project, "target_language", None)))
+        # Cenas primeiro: o fallback de escala ainda usa os timestamps antigos dos segmentos.
         if scenes:
             spans = align_scene_times(scenes, original, segments, use_translated=use_translated)
             for scene, (start_ms, end_ms) in zip(scenes, spans):
                 scene.start_ms = start_ms
                 scene.end_ms = end_ms
+        if original:
+            spans = align_segment_times(original, segments, use_translated=use_translated)
+            for segment, (start_ms, end_ms) in zip(original, spans):
+                segment.start_ms = start_ms
+                segment.end_ms = end_ms
         session.flush()
         advanced = _advance_past_audio(session, project)
         if owns:

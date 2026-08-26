@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { CharacterSelect } from "@/components/character-select";
 import { ImageModelPicker } from "@/components/image-model-picker";
+import { ScriptSuggestDialog } from "@/components/script-suggest-dialog";
 import { StyleSelect } from "@/components/style-select";
 import { TitleSuggestDialog } from "@/components/title-suggest-dialog";
 import { createProject } from "@/lib/api";
@@ -84,13 +85,16 @@ export function ProjectCreateForm() {
   const [kenBurns, setKenBurns] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const needsFile = sourceType !== "youtube_link";
+  const needsFile = sourceType === "upload_video" || sourceType === "upload_audio";
+  const isScript = sourceType === "text_script";
+  const isYoutube = sourceType === "youtube_link";
 
   function setSource(next: SourceType) {
     setSourceType(next);
     setFile(null);
-    if (next !== "youtube_link") setSourceRef("");
+    if (next !== sourceType) setSourceRef("");
     if (next !== "upload_audio") setReuseOriginalAudio(false);
+    if (next === "text_script") setLanguage("original");
   }
 
   async function onSubmit(event: FormEvent) {
@@ -100,8 +104,12 @@ export function ProjectCreateForm() {
       setError("Selecione um arquivo de vídeo ou áudio.");
       return;
     }
-    if (!needsFile && !sourceRef.trim()) {
+    if (isYoutube && !sourceRef.trim()) {
       setError("Informe o link do YouTube.");
+      return;
+    }
+    if (isScript && !sourceRef.trim()) {
+      setError("Cole ou gere o roteiro em texto.");
       return;
     }
     if (!imageModel.trim()) {
@@ -116,7 +124,7 @@ export function ProjectCreateForm() {
           title: title.trim(),
           source_type: sourceType,
           source_ref: needsFile ? undefined : sourceRef.trim(),
-          target_language: language,
+          target_language: isScript ? "original" : language,
           automation_config: toAutomationPayload(automation, imageProvider, sceneStyleId, characterId, {
             reuseOriginalAudio: sourceType === "upload_audio" && reuseOriginalAudio,
             audioGenerationMode,
@@ -160,7 +168,7 @@ export function ProjectCreateForm() {
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
         <p className="label-tech">Origem</p>
-        <div role="tablist" aria-label="Origem do projeto" className="mt-3 grid grid-cols-3 gap-1 rounded-lg bg-ink-950 p-1">
+        <div role="tablist" aria-label="Origem do projeto" className="mt-3 grid grid-cols-2 gap-1 rounded-lg bg-ink-950 p-1 sm:grid-cols-4">
           {SOURCE_OPTIONS.map((option) => {
             const active = sourceType === option.value;
             return (
@@ -194,6 +202,20 @@ export function ProjectCreateForm() {
               required
             />
           </label>
+        ) : isScript ? (
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="label-tech">Roteiro</span>
+              <ScriptSuggestDialog onSelect={setSourceRef} />
+            </div>
+            <textarea
+              value={sourceRef}
+              onChange={(event) => setSourceRef(event.target.value)}
+              className={`${FIELD} min-h-[240px] resize-y`}
+              placeholder="Cole ou escreva o texto da narração…"
+              required
+            />
+          </div>
         ) : (
           <label className="label-tech mt-4 block">
             Link do YouTube
@@ -249,6 +271,7 @@ export function ProjectCreateForm() {
         )}
       </section>
 
+      {isScript ? null : (
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
         <p className="label-tech">Idioma da transcrição</p>
         <fieldset className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -278,6 +301,7 @@ export function ProjectCreateForm() {
           })}
         </fieldset>
       </section>
+      )}
 
       <section className="rounded-xl border border-white/[0.08] bg-ink-900 p-5">
         <CharacterSelect

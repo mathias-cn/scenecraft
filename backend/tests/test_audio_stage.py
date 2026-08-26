@@ -56,6 +56,12 @@ def test_should_skip_only_for_upload_audio_flag():
     assert should_skip_audio_stage(project) is True
     youtube = _project(automation_config={"reuse_original_audio": True})
     assert should_skip_audio_stage(youtube) is False
+    script = _project(
+        source_type=SourceType.TEXT_SCRIPT,
+        source_ref="Olá mundo.",
+        automation_config={"reuse_original_audio": True},
+    )
+    assert should_skip_audio_stage(script) is False
     upload_off = _project(source_type=SourceType.UPLOAD_AUDIO, automation_config={})
     assert should_skip_audio_stage(upload_off) is False
 

@@ -86,7 +86,13 @@ def load_audio(project: Project, dest_dir: str | Path) -> Path:
     dest = Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
     source_type = project.source_type
+    source_value = str(getattr(source_type, "value", source_type))
     ref = (project.source_ref or "").strip()
+    if source_value == SourceType.TEXT_SCRIPT.value:
+        raise SourceDownloadError(
+            "text_script não tem áudio de origem; a transcrição usa o roteiro digitado",
+            code="text_script_no_audio",
+        )
     if not ref:
         raise SourceDownloadError("projeto sem source_ref", code="missing_source")
     if source_type == SourceType.YOUTUBE_LINK or _is_youtube_url(ref):

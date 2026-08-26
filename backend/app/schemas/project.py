@@ -29,6 +29,8 @@ from app.schemas.assets import SignedAssetModel, presign, stored_key_field
 AUDIO_GENERATION_MODES = ("elevenlabs", "user_upload")
 SCENE_PACING_VALUES = ("short", "medium", "long")
 _TRUE_VALUES = {True, 1, "1", "true", "True", "yes", "on"}
+_REF_REQUIRED_TYPES = {SourceType.YOUTUBE_LINK, SourceType.TEXT_SCRIPT}
+_NO_ORIGINAL_AUDIO_TYPES = {SourceType.YOUTUBE_LINK, SourceType.TEXT_SCRIPT}
 
 
 def normalize_automation_config(
@@ -91,7 +93,7 @@ def normalize_automation_config(
 class ProjectCreate(BaseModel):
     title: str = Field(min_length=1, max_length=200)
     source_type: SourceType
-    source_ref: str | None = Field(default=None, max_length=8000)
+    source_ref: str | None = Field(default=None, max_length=100_000)
     target_language: str = Field(default="pt-BR", min_length=2, max_length=16)
     automation_config: dict[str, Any] = Field(default_factory=dict)
     image_provider: str | None = None
@@ -114,19 +116,19 @@ class ProjectCreate(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def youtube_requires_ref(self):
-        if self.source_type is SourceType.YOUTUBE_LINK and not self.source_ref:
-            raise ValueError("source_ref é obrigatório para youtube_link")
+    def source_requires_ref(self):
+        if self.source_type in _REF_REQUIRED_TYPES and not self.source_ref:
+            raise ValueError(f"source_ref é obrigatório para {self.source_type.value}")
         return self
 
     @model_validator(mode="after")
-    def reject_reuse_original_audio_for_youtube(self):
+    def reject_reuse_original_audio_without_source_audio(self):
         config = dict(self.automation_config or {})
         reuse = config.get("reuse_original_audio") in _TRUE_VALUES
-        if self.source_type is SourceType.YOUTUBE_LINK and reuse:
+        if self.source_type in _NO_ORIGINAL_AUDIO_TYPES and reuse:
             raise ValueError(
-                "reuse_original_audio não é permitido para youtube_link: "
-                "não há áudio original baixado. Escolha ElevenLabs ou upload próprio"
+                f"reuse_original_audio não é permitido para {self.source_type.value}: "
+                "não há áudio original. Escolha ElevenLabs ou upload próprio"
             )
         return self
 

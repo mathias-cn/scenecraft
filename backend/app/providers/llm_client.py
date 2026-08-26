@@ -5,6 +5,7 @@
 - traduzir cada segmento (preservando start_ms/end_ms)
 - gerar a descrição do vídeo e as tags SEO a partir do transcript completo
 - resumir o vídeo e montar o prompt da thumbnail
+- gerar um roteiro de narração a partir de um tópico
 """
 
 from __future__ import annotations
@@ -70,6 +71,20 @@ Responda só com um objeto JSON na forma:
 Regras:
 - summary em 2–4 frases, no idioma pedido.
 - Foque no tema, no gancho e na conclusão; sem timestamps nem lista de cenas."""
+
+SCRIPT_SYSTEM = """Você escreve um roteiro de narração em voz alta para um vídeo.
+Responda só com um objeto JSON na forma:
+{"script":"..."}
+Regras:
+- script é o texto completo a ser falado, no mesmo idioma do tópico.
+- Frases naturais para TTS: pontuação clara, sem marcações de câmera, sem timestamps, sem títulos de seção.
+- Aproxime a extensão a target_word_count palavras (cerca de 150 palavras por minuto de narração).
+- Não use markdown, listas com bullets nem aspas envolvendo o roteiro inteiro."""
+
+SCRIPT_WORDS_PER_MINUTE = 150
+DEFAULT_SCRIPT_MINUTES = 8
+MIN_SCRIPT_MINUTES = 1
+MAX_SCRIPT_MINUTES = 30
 
 THUMBNAIL_PROMPT_SYSTEM = """Você cria um prompt de imagem para thumbnail de YouTube.
 Responda só com um objeto JSON na forma:
@@ -494,3 +509,27 @@ def generate_titles(draft_title: str) -> list[str]:
     if len(titles) < 3:
         raise LLMJSONError("JSON de títulos deve conter 3 títulos")
     return PricedSequence(titles, cost)
+
+
+def generate_script(topic: str, *, target_duration_minutes: float | None = None) -> PricedText:
+    """Roteiro de narração completo a partir de um tópico (~150 palavras/minuto)."""
+    theme = (topic or "").strip()
+    if not theme:
+        raise LLMError("topic vazio")
+    minutes = DEFAULT_SCRIPT_MINUTES if target_duration_minutes is None else float(target_duration_minutes)
+    if minutes < MIN_SCRIPT_MINUTES or minutes > MAX_SCRIPT_MINUTES:
+        raise LLMError(
+            f"target_duration_minutes deve estar entre {MIN_SCRIPT_MINUTES} e {MAX_SCRIPT_MINUTES}"
+        )
+    word_count = max(int(round(minutes * SCRIPT_WORDS_PER_MINUTE)), SCRIPT_WORDS_PER_MINUTE)
+    payload = {
+        "topic": theme,
+        "target_duration_minutes": minutes,
+        "target_word_count": word_count,
+        "words_per_minute": SCRIPT_WORDS_PER_MINUTE,
+    }
+    result, cost = priced_completion(SCRIPT_SYSTEM, json.dumps(payload, ensure_ascii=False))
+    script = str(result.get("script") or result.get("text") or "").strip()
+    if not script:
+        raise LLMJSONError("JSON de roteiro deve conter 'script'")
+    return PricedText(script, cost)

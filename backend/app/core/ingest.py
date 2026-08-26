@@ -1,4 +1,4 @@
-"""Validação da fonte do projeto (YouTube vs upload)."""
+"""Validação da fonte do projeto (YouTube, upload ou roteiro em texto)."""
 
 from __future__ import annotations
 
@@ -82,6 +82,12 @@ def resolve_source_ref(
             raise IngestError("youtube_link não aceita arquivo; envie source_ref com a URL")
         if not ref:
             raise IngestError("source_ref é obrigatório para youtube_link")
+        return ref
+    if source_type is SourceType.TEXT_SCRIPT:
+        if has_file:
+            raise IngestError("text_script não aceita arquivo; envie source_ref com o roteiro")
+        if not ref:
+            raise IngestError("source_ref é obrigatório para text_script")
         return ref
     if source_type in {SourceType.UPLOAD_VIDEO, SourceType.UPLOAD_AUDIO}:
         if has_file:

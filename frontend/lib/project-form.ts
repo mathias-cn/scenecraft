@@ -4,6 +4,7 @@ export const SOURCE_OPTIONS: { value: SourceType; label: string; hint: string }[
   { value: "youtube_link", label: "YouTube", hint: "Cole o link do vídeo" },
   { value: "upload_video", label: "Vídeo", hint: "mp4, mov, webm…" },
   { value: "upload_audio", label: "Áudio", hint: "mp3, wav, m4a…" },
+  { value: "text_script", label: "Roteiro em texto", hint: "Cole ou gere o texto da narração" },
 ];
 
 export const TRANSCRIPT_LANGUAGES = [

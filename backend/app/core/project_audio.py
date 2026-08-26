@@ -135,7 +135,7 @@ def set_final_audio(session: Session, project: Project, file_url: str, source: s
 def attach_original_audio_for_render(session: Session, project: Project) -> str:
     """Copia o áudio original (upload) para o render, sem re-transcrever.
 
-    Não baixa YouTube: `youtube_link` não tem áudio original reaproveitável.
+    Não baixa YouTube nem roteiro em texto: esses tipos não têm áudio original.
     """
     track = original_audio_track(project)
     url = (track.file_url if track is not None else "") or ""
@@ -145,15 +145,16 @@ def attach_original_audio_for_render(session: Session, project: Project) -> str:
     return url
 
 
-def _is_youtube_source(project: Project) -> bool:
+def _has_no_original_audio(project: Project) -> bool:
     value = getattr(project.source_type, "value", project.source_type)
-    return str(value) == SourceType.YOUTUBE_LINK.value
+    return str(value) in {SourceType.YOUTUBE_LINK.value, SourceType.TEXT_SCRIPT.value}
 
 
 def _extract_original_audio(session: Session, project: Project) -> str:
-    if _is_youtube_source(project):
+    if _has_no_original_audio(project):
+        value = getattr(project.source_type, "value", project.source_type)
         raise ProjectAudioError(
-            "youtube_link não tem áudio original para reaproveitar; use ElevenLabs ou upload próprio"
+            f"{value} não tem áudio original para reaproveitar; use ElevenLabs ou upload próprio"
         )
     import tempfile
 

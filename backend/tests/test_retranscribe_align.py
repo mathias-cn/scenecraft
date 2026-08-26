@@ -53,14 +53,14 @@ def _scene(pid, **kwargs):
     return SimpleNamespace(**data)
 
 
-def _project(pid, scene, **kwargs):
+def _project(pid, scene=None, **kwargs):
     data = dict(
         id=pid,
         source_type=SourceType.YOUTUBE_LINK,
         target_language="original",
         current_stage=ProjectStage.AUDIO_STAGE,
         automation_config={"audio_generation_mode": "elevenlabs"},
-        scenes=[scene],
+        scenes=[] if scene is None else [scene],
         transcript_segments=[
             SimpleNamespace(
                 index=0,
@@ -117,6 +117,8 @@ def test_retranscribe_and_align_updates_scene_times(monkeypatch, tmp_path):
     assert result["advanced"] is True
     assert scene.start_ms == 0
     assert scene.end_ms == 1200
+    assert project.transcript_segments[0].start_ms == 0
+    assert project.transcript_segments[0].end_ms == 1200
     assert project.current_stage is ProjectStage.SCENE_PLANNING
     assert project.video_assemblies[0].render_config["audio_url"] == project.audio_tracks[0].file_url
 
@@ -143,6 +145,41 @@ def test_retranscribe_and_align_skips_reuse_original_audio(monkeypatch):
     assert scene.start_ms == 0
     assert scene.end_ms == 800
     assert project.current_stage is ProjectStage.AUDIO_STAGE
+
+
+def test_retranscribe_and_align_updates_placeholder_segment_times_without_scenes(monkeypatch, tmp_path):
+    pid = uuid4()
+    segment = SimpleNamespace(
+        index=0,
+        start_ms=0,
+        end_ms=400,
+        text_original="hello there friend",
+        text_translated=None,
+    )
+    project = _project(
+        pid,
+        source_type=SourceType.TEXT_SCRIPT,
+        transcript_segments=[segment],
+    )
+    audio = tmp_path / "n.mp3"
+    audio.write_bytes(b"mp3")
+    monkeypatch.setattr("app.core.retranscribe_align._download_audio", lambda *_a, **_k: audio)
+    monkeypatch.setattr(
+        "app.providers.transcription_client.transcribe",
+        lambda *_a, **_k: [Segment(start_ms=0, end_ms=1800, text="hello there friend")],
+    )
+    monkeypatch.setattr(
+        "app.core.retranscribe_align.provider_semaphore.hold",
+        lambda *_a, **_k: __import__("contextlib").nullcontext(),
+    )
+    monkeypatch.setattr("app.core.retranscribe_align.advance_stage", _stub_advance(project))
+    result = retranscribe_and_align(project.id, db=FakeDB(project))
+    assert result["scene_count"] == 0
+    assert result["skipped"] is False
+    assert result["advanced"] is True
+    assert segment.start_ms == 0
+    assert segment.end_ms == 1800
+    assert project.current_stage is ProjectStage.SCENE_PLANNING
 
 
 def test_celery_task_is_registered_with_project_id_signature():

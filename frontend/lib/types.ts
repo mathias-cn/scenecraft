@@ -1,4 +1,4 @@
-export type SourceType = "youtube_link" | "upload_video" | "upload_audio";
+export type SourceType = "youtube_link" | "upload_video" | "upload_audio" | "text_script";
 
 export type ProjectStage =
   | "created"

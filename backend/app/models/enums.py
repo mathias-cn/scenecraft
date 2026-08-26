@@ -5,6 +5,7 @@ class SourceType(str, enum.Enum):
     YOUTUBE_LINK = "youtube_link"
     UPLOAD_VIDEO = "upload_video"
     UPLOAD_AUDIO = "upload_audio"
+    TEXT_SCRIPT = "text_script"
 
 
 class ProjectStage(str, enum.Enum):

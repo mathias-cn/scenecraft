@@ -1,4 +1,4 @@
-"""Transcreve o áudio de um projeto e avança o estágio TRANSCRIBING."""
+"""Transcreve o áudio de um projeto ou materializa um roteiro em texto."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.core.project_audio import persist_original_audio
+from app.core.script_transcript import TRANSCRIPT_METHOD_TEXT_SCRIPT, script_segments
 from app.core.source_downloader import load_audio
 from app.core.state_machine import ProjectNotFound, advance_stage
 from app.core.youtube_captions import (
@@ -61,6 +62,8 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
     YouTube (`youtube_link`) tenta legendas oficiais primeiro (`caption_api`);
     se falhar, cai no download yt-dlp + Whisper (`whisper_fallback`) — único
     uso restante do yt-dlp. Uploads vão direto para Whisper (`whisper`).
+    Roteiro em texto (`text_script`) não chama Whisper nem yt-dlp: divide o
+    `source_ref` em frases com timestamps placeholder (~150 wpm).
 
     O avanço de TRANSCRIBING leva a TRANSCRIPT_REVIEW e, com auto_transcribe,
     ao AUDIO_STAGE (não mais a SCENE_PLANNING).
@@ -106,9 +109,16 @@ def transcribe_project(project_id: str | UUID, db: Session | None = None) -> dic
             session.close()
 
 
+def _source_value(project: Project) -> str:
+    return str(getattr(project.source_type, "value", project.source_type))
+
+
 def _is_youtube_link(project: Project) -> bool:
-    value = getattr(project.source_type, "value", project.source_type)
-    return str(value) == SourceType.YOUTUBE_LINK.value
+    return _source_value(project) == SourceType.YOUTUBE_LINK.value
+
+
+def _is_text_script(project: Project) -> bool:
+    return _source_value(project) == SourceType.TEXT_SCRIPT.value
 
 
 def _obtain_transcript(
@@ -116,6 +126,9 @@ def _obtain_transcript(
     project: Project,
 ) -> tuple[list[Segment], str, str]:
     """Devolve (segmentos, método, idioma detectado)."""
+    if _is_text_script(project):
+        segments = script_segments(project.source_ref or "")
+        return segments, TRANSCRIPT_METHOD_TEXT_SCRIPT, ""
     if _is_youtube_link(project):
         captions = fetch_youtube_captions(project.source_ref, project.target_language)
         if captions is not None:

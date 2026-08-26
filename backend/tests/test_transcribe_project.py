@@ -529,3 +529,58 @@ def test_whisper_duration_falls_back_to_last_segment(monkeypatch):
         [Segment(start_ms=0, end_ms=1500, text="olá", language="pt")],
     )
     assert duration == 1500
+
+
+def test_load_audio_rejects_text_script():
+    from app.core.source_downloader import SourceDownloadError, load_audio
+
+    project = _project(
+        source_type=SourceType.TEXT_SCRIPT,
+        source_ref="Olá. Isto é um roteiro sem áudio.",
+    )
+    with pytest.raises(SourceDownloadError, match="text_script"):
+        load_audio(project, Path("/tmp"))
+
+
+def test_transcribe_project_text_script_splits_sentences_without_whisper(monkeypatch):
+    from app.core.script_transcript import TRANSCRIPT_METHOD_TEXT_SCRIPT
+
+    script = "Olá mundo. Esta é a segunda frase da narração."
+    project = _project(
+        source_type=SourceType.TEXT_SCRIPT,
+        source_ref=script,
+        target_language="original",
+    )
+    db = RecordingDB(project)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.load_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve baixar áudio")),
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve chamar Whisper")),
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.fetch_youtube_captions",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve chamar caption_api")),
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_TEXT_SCRIPT
+    assert result["translated"] is False
+    assert result["segment_count"] == 2
+    texts = [row.text_original for row in db.added]
+    assert texts == ["Olá mundo.", "Esta é a segunda frase da narração."]
+    assert db.added[0].start_ms == 0
+    assert db.added[0].end_ms == db.added[1].start_ms
+    assert db.added[1].end_ms > db.added[1].start_ms
+
+
+def test_transcribe_project_text_script_rejects_empty_script(monkeypatch):
+    project = _project(source_type=SourceType.TEXT_SCRIPT, source_ref="   \n")
+    db = RecordingDB(project)
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+    with pytest.raises(TranscriptionError, match="vazia"):
+        transcribe_project(project.id, db=db)

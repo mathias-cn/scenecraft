@@ -21,6 +21,11 @@ def test_youtube_requires_source_ref():
         ProjectCreate(title="x", source_type=SourceType.YOUTUBE_LINK)
 
 
+def test_text_script_requires_source_ref():
+    with pytest.raises(ValidationError, match="source_ref"):
+        ProjectCreate(title="x", source_type=SourceType.TEXT_SCRIPT)
+
+
 def test_upload_json_may_omit_file_when_source_ref_present():
     payload = ProjectCreate(
         title="clip",
@@ -53,6 +58,23 @@ def test_youtube_rejects_file():
             source_ref="https://youtu.be/x",
             has_file=True,
         )
+
+
+def test_text_script_rejects_file_and_requires_ref():
+    with pytest.raises(IngestError, match="não aceita arquivo"):
+        resolve_source_ref(
+            source_type=SourceType.TEXT_SCRIPT,
+            source_ref="Olá. Isto é um roteiro.",
+            has_file=True,
+        )
+    with pytest.raises(IngestError, match="obrigatório"):
+        resolve_source_ref(source_type=SourceType.TEXT_SCRIPT, source_ref=None, has_file=False)
+    ref = resolve_source_ref(
+        source_type=SourceType.TEXT_SCRIPT,
+        source_ref="  Primeira frase. Segunda frase.  ",
+        has_file=False,
+    )
+    assert ref == "Primeira frase. Segunda frase."
 
 
 def test_parse_automation_config_json_object():
@@ -195,6 +217,28 @@ def test_project_create_rejects_reuse_original_audio_for_youtube():
         )
 
 
+def test_project_create_rejects_reuse_original_audio_for_text_script():
+    with pytest.raises(ValidationError, match="reuse_original_audio"):
+        ProjectCreate(
+            title="clip",
+            source_type=SourceType.TEXT_SCRIPT,
+            source_ref="Olá mundo. Este é o roteiro.",
+            automation_config={"reuse_original_audio": True, "audio_generation_mode": "elevenlabs"},
+        )
+
+
+def test_project_create_accepts_text_script_with_elevenlabs():
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.TEXT_SCRIPT,
+        source_ref="Olá mundo. Este é o roteiro completo da narração.",
+        automation_config={"audio_generation_mode": "user_upload"},
+    )
+    assert payload.source_type is SourceType.TEXT_SCRIPT
+    assert payload.automation_config["reuse_original_audio"] is False
+    assert payload.automation_config["audio_generation_mode"] == "user_upload"
+
+
 def test_project_create_forces_reuse_false_for_upload_video():
     payload = ProjectCreate(
         title="clip",
@@ -308,3 +352,36 @@ def test_advance_endpoint_returns_200_from_advance_result(monkeypatch):
     body = response.json()
     assert body["to_stage"] == ProjectStage.SCENE_PLANNING.value
     assert body["status"] == ProjectStatus.RUNNING.value
+
+
+def test_generate_script_endpoint_returns_text(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.core.auth import CurrentUser, get_current_user
+    from app.db import get_db
+    from app.main import app
+    from app.providers.pricing import PricedText
+
+    monkeypatch.setattr("app.api.ai.assert_paid_job_allowed", lambda _db: None)
+    monkeypatch.setattr(
+        "app.api.ai.generate_script",
+        lambda topic, target_duration_minutes=None: PricedText(f"Roteiro sobre {topic}.", "0.01"),
+    )
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(
+        email="owner@example.com",
+        subject="owner",
+    )
+    app.dependency_overrides[get_db] = lambda: None
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/ai/generate-script",
+                json={"topic": "fotossíntese", "target_duration_minutes": 3},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert "fotossíntese" in body["script"]
+    assert body["cost_usd"] == 0.01

@@ -89,3 +89,20 @@ def test_align_uses_translated_text_when_requested():
     spans = align_scene_times(scenes, original, new_segments, use_translated=True)
     assert spans[0][0] == 100
     assert spans[0][1] == 900
+
+
+def test_align_segment_times_maps_whisper_windows_onto_originals():
+    from app.core.audio_align import align_segment_times
+
+    original = [
+        SimpleNamespace(index=0, text_original="hello there friend", text_translated=None, start_ms=0, end_ms=400),
+        SimpleNamespace(index=1, text_original="how are you today", text_translated=None, start_ms=400, end_ms=800),
+    ]
+    new_segments = [
+        Segment(start_ms=0, end_ms=1500, text="hello there friend"),
+        Segment(start_ms=1500, end_ms=3000, text="how are you today"),
+    ]
+    spans = align_segment_times(original, new_segments)
+    assert spans[0][0] == 0
+    assert spans[0][1] <= spans[1][0]
+    assert spans[1][1] == 3000

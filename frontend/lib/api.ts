@@ -23,6 +23,13 @@ export function generateTitles(draftTitle: string) {
   });
 }
 
+export function generateScript(topic: string, targetDurationMinutes?: number) {
+  return apiPost<{ script: string; cost_usd?: number | null }>("/api/ai/generate-script", {
+    topic,
+    ...(targetDurationMinutes != null ? { target_duration_minutes: targetDurationMinutes } : {}),
+  });
+}
+
 export function listProjects(init?: RequestInit) {
   return apiGet<Project[]>("/api/projects", init);
 }
