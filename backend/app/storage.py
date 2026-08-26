@@ -120,23 +120,43 @@ def _with_retry(operation: str, fn: Callable[[], T]) -> T:
     raise StorageError(f"{operation} falhou após {_RETRY_ATTEMPTS} tentativas: {last}") from last
 
 
+def relative_object_key(key: str) -> str:
+    """Caminho dentro do bucket, sem o nome do bucket no prefixo."""
+    text = unquote((key or "").strip()).lstrip("/")
+    bucket = (settings.s3_bucket or "").strip().strip("/")
+    if bucket:
+        if text == bucket:
+            return ""
+        prefix = f"{bucket}/"
+        if text.startswith(prefix):
+            text = text[len(prefix) :]
+    return text
+
+
 def object_key(project_id: str, filename: str) -> str:
+    """Key S3 relativa ao bucket, ex. `characters/{id}/base.png` — sem `S3_BUCKET`."""
     safe_name = Path(filename).name
     if not project_id.strip() or not safe_name or safe_name in {".", ".."}:
         raise StorageError("project_id ou filename inválido")
-    return f"{project_id.strip()}/{safe_name}"
+    prefix = relative_object_key(project_id.strip().strip("/"))
+    if not prefix:
+        return safe_name
+    return f"{prefix}/{safe_name}"
 
 
 DOWNLOAD_URL_EXPIRES = 3600
 
 
 def public_url(key: str) -> str:
+    relative = relative_object_key(key)
+    if not relative:
+        raise StorageError("object_key vazio")
     if settings.r2_public_base_url:
-        return f"{settings.r2_public_base_url.rstrip('/')}/{key}"
+        return f"{settings.r2_public_base_url.rstrip('/')}/{relative}"
     endpoint = (settings.object_storage_endpoint or "").rstrip("/")
     if endpoint:
-        return f"{endpoint}/{settings.s3_bucket}/{key}"
-    return f"s3://{settings.s3_bucket}/{key}"
+        return f"{endpoint}/{settings.s3_bucket}/{relative}"
+    return f"s3://{settings.s3_bucket}/{relative}"
 
 
 def download_url(
@@ -211,7 +231,7 @@ def _parse_location(url: str) -> tuple[str, str]:
     path = unquote(parsed.path.lstrip("/"))
     public = (settings.r2_public_base_url or "").rstrip("/")
     if public and url.startswith(public + "/"):
-        key = url[len(public) + 1 :]
+        key = relative_object_key(url[len(public) + 1 :])
         if not key:
             raise StorageError(f"URL pública sem key: {url}")
         return settings.s3_bucket, key
