@@ -168,6 +168,7 @@ Veja `.env.example`. As principais:
 | `BETTER_AUTH_URL` | URL pública do frontend (prod: `https://scenecraft.mazting.studio`) |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Cliente OAuth 2.0 no Google Cloud Console |
 | `OWNER_EMAIL` | Único email autorizado a entrar |
+| `BETTER_AUTH_JWKS_URL` | Onde a API busca o JWKS (produção: `http://frontend:3000/api/auth/jwks`, rede Docker) |
 
 Se `S3_ENDPOINT_URL` estiver vazio, o storage usa AWS S3. Para R2, use `https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com`.
 

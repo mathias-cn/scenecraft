@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     owner_email: str = ""
     better_auth_url: str = ""
     next_public_api_url: str = ""
-    better_auth_jwks_url: str = "https://scenecraft.mazting.studio/api/auth/jwks"
+    better_auth_jwks_url: str = ""
 
     celery_loglevel: str = "info"
     celery_task_max_retries: int = Field(default=2, ge=0, le=10)

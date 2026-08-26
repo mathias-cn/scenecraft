@@ -94,6 +94,7 @@ Preencha as URIs do Supabase e as chaves. Em produção **não** use `localhost`
 | `BETTER_AUTH_URL` | `https://scenecraft.mazting.studio` |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Cliente OAuth 2.0 no Google Cloud Console |
 | `OWNER_EMAIL` | Único email autorizado a entrar |
+| `BETTER_AUTH_JWKS_URL` | `http://frontend:3000/api/auth/jwks` (HTTP interno na rede Docker; não use o domínio público) |
 
 No Google Cloud Console, a redirect URI autorizada deve ser `https://scenecraft.mazting.studio/api/auth/callback/google`.
 

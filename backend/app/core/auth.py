@@ -1,4 +1,4 @@
-"""Autenticação JWT (Better Auth) via JWKS público."""
+"""Autenticação JWT (Better Auth) via JWKS (URL interna em BETTER_AUTH_JWKS_URL)."""
 
 from __future__ import annotations
 
@@ -41,6 +41,7 @@ def _get_jwks_client() -> jwt.PyJWKClient:
     global _jwks_client, _jwks_client_url
     url = (settings.better_auth_jwks_url or "").strip()
     if not url:
+        logger.warning("auth failed: BETTER_AUTH_JWKS_URL is not configured")
         raise _unauthorized()
     with _JWKS_LOCK:
         if _jwks_client is None or _jwks_client_url != url:

@@ -160,3 +160,25 @@ def test_jwks_client_is_reused_for_signing_keys(owner_rsa):
     get_current_user(authorization=f"Bearer {token}")
     get_current_user(authorization=f"Bearer {token}")
     assert client.calls == 2
+
+
+def test_jwks_client_uses_settings_http_url(monkeypatch):
+    monkeypatch.setattr(
+        auth_mod.settings,
+        "better_auth_jwks_url",
+        "http://frontend:3000/api/auth/jwks",
+    )
+    clear_jwks_cache()
+    client = auth_mod._get_jwks_client()
+    assert client.uri == "http://frontend:3000/api/auth/jwks"
+    clear_jwks_cache()
+
+
+def test_empty_jwks_url_is_401(monkeypatch):
+    monkeypatch.setattr(auth_mod.settings, "better_auth_jwks_url", "")
+    monkeypatch.setattr(auth_mod.settings, "owner_email", "owner@example.com")
+    clear_jwks_cache()
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(authorization="Bearer header.payload.sig")
+    assert exc_info.value.status_code == 401
+    clear_jwks_cache()
