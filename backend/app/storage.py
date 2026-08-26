@@ -11,16 +11,6 @@ from pathlib import Path
 from typing import TypeVar
 from urllib.parse import unquote, urlparse
 
-import boto3
-from botocore.config import Config as BotoConfig
-from botocore.exceptions import (
-    ClientError,
-    ConnectTimeoutError,
-    ConnectionClosedError,
-    EndpointConnectionError,
-    ReadTimeoutError,
-)
-
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -50,6 +40,9 @@ def _require_config() -> None:
 
 
 def _client():
+    import boto3
+    from botocore.config import Config as BotoConfig
+
     _require_config()
     endpoint = settings.object_storage_endpoint or None
     boto_kwargs: dict = {
@@ -74,6 +67,14 @@ def _client():
 
 
 def _is_retryable(exc: BaseException) -> bool:
+    from botocore.exceptions import (
+        ClientError,
+        ConnectTimeoutError,
+        ConnectionClosedError,
+        EndpointConnectionError,
+        ReadTimeoutError,
+    )
+
     if isinstance(exc, ClientError):
         code = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
         error_code = exc.response.get("Error", {}).get("Code", "")
@@ -126,6 +127,9 @@ def object_key(project_id: str, filename: str) -> str:
     return f"{project_id.strip()}/{safe_name}"
 
 
+DOWNLOAD_URL_EXPIRES = 3600
+
+
 def public_url(key: str) -> str:
     if settings.r2_public_base_url:
         return f"{settings.r2_public_base_url.rstrip('/')}/{key}"
@@ -133,6 +137,65 @@ def public_url(key: str) -> str:
     if endpoint:
         return f"{endpoint}/{settings.s3_bucket}/{key}"
     return f"s3://{settings.s3_bucket}/{key}"
+
+
+def download_url(
+    url: str,
+    *,
+    filename: str | None = None,
+    content_type: str | None = None,
+    expires_in: int = DOWNLOAD_URL_EXPIRES,
+) -> str:
+    """HTTP para preview/download: CDN público se existir, senão GET assinado."""
+    text = (url or "").strip()
+    if not text:
+        raise StorageError("url vazia")
+    public = (settings.r2_public_base_url or "").rstrip("/")
+    if public and (text == public or text.startswith(public + "/")):
+        return text
+    try:
+        bucket, key = _parse_location(text)
+    except StorageError:
+        if text.startswith(("http://", "https://")):
+            return text
+        raise
+    if public:
+        return public_url(key)
+    return _presigned_get(
+        bucket,
+        key,
+        filename=filename or Path(key).name,
+        content_type=content_type,
+        expires_in=expires_in,
+    )
+
+
+def _presigned_get(
+    bucket: str,
+    key: str,
+    *,
+    filename: str | None,
+    content_type: str | None,
+    expires_in: int,
+) -> str:
+    params: dict = {"Bucket": bucket, "Key": key}
+    if content_type:
+        params["ResponseContentType"] = content_type
+    safe = Path(str(filename or "")).name.replace('"', "").replace("\r", "").replace("\n", "")
+    if safe:
+        params["ResponseContentDisposition"] = f'inline; filename="{safe}"'
+
+    def _sign() -> str:
+        return _client().generate_presigned_url(
+            "get_object",
+            Params=params,
+            ExpiresIn=expires_in,
+        )
+
+    signed = _with_retry("generate_presigned_url", _sign)
+    if not signed:
+        raise StorageError("não foi possível assinar a URL de download")
+    return signed
 
 
 def _parse_location(url: str) -> tuple[str, str]:
@@ -228,6 +291,8 @@ def upload_file(local_path: str, project_id: str, filename: str) -> str:
 
 def object_exists(project_id: str, filename: str) -> bool:
     """True se `{project_id}/{filename}` já existe no bucket."""
+    from botocore.exceptions import ClientError
+
     key = object_key(project_id, filename)
     try:
         _client().head_object(Bucket=settings.s3_bucket, Key=key)

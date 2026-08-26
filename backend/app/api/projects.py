@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.api.deps import DbDep
+from app.core.export_project import export_project
 from app.core.generate_description import DescriptionError, confirm_description, enqueue_description_generate
 from app.core.generate_scene_media import enqueue_scene_regenerate
 from app.core.generate_thumbnail import enqueue_thumbnail_generate, persist_uploaded_thumbnail
@@ -49,6 +50,7 @@ from app.schemas.project import (
     DescriptionConfirmRequest,
     ProjectCreate,
     ProjectDetail,
+    ProjectExportRead,
     ProjectRead,
     TranscriptPatchRequest,
     VoiceRead,
@@ -496,6 +498,20 @@ def upload_project_audio(
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
     return ProjectDetail.model_validate(project)
+
+
+@router.get("/{project_id}/export")
+def export_project_pack(project_id: UUID, db: DbDep) -> ProjectExportRead:
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    try:
+        payload = export_project(project.id, db=db)
+    except ProjectNotFound as exc:
+        raise _http_for_transition(exc) from exc
+    except StorageError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    return ProjectExportRead.model_validate(payload)
 
 
 @router.get("/{project_id}")

@@ -179,3 +179,10 @@ export type AdvanceResult = {
   paused_for_review: boolean;
   dispatched_job_id: string | null;
 };
+
+export type ProjectExport = {
+  title: string;
+  video_assembly: { output_url: string | null };
+  thumbnails: { file_url: string | null };
+  descriptions: { text: string; tags: string[] };
+};

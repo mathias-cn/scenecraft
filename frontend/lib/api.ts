@@ -7,6 +7,7 @@ import type {
   Project,
   ProjectCreate,
   ProjectDetail,
+  ProjectExport,
   Style,
   TranscriptSegmentPatch,
 } from "./types";
@@ -101,6 +102,10 @@ export function generateProjectDescription(id: string) {
 
 export function confirmProjectDescription(id: string, payload: { text: string; tags: string[] }) {
   return apiPost<ProjectDetail>(`/api/projects/${id}/description/confirm`, payload);
+}
+
+export function exportProject(id: string) {
+  return apiGet<ProjectExport>(`/api/projects/${id}/export`);
 }
 
 export function listStyles(active?: boolean) {

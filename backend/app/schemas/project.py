@@ -155,6 +155,26 @@ class AudioGenerateRequest(BaseModel):
     voice_id: str = Field(min_length=1, max_length=128)
 
 
+class VideoAssemblyExportRead(BaseModel):
+    output_url: str | None = None
+
+
+class ThumbnailsExportRead(BaseModel):
+    file_url: str | None = None
+
+
+class DescriptionsExportRead(BaseModel):
+    text: str = ""
+    tags: list[str] = Field(default_factory=list)
+
+
+class ProjectExportRead(BaseModel):
+    title: str
+    video_assembly: VideoAssemblyExportRead
+    thumbnails: ThumbnailsExportRead
+    descriptions: DescriptionsExportRead
+
+
 class DescriptionConfirmRequest(BaseModel):
     text: str = Field(min_length=1)
     tags: list[str] = Field(default_factory=list)
