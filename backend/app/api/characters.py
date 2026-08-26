@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import noload, selectinload
 
-from app.api.deps import DbDep
+from app.api.deps import DbDep, require_owner
 from app.core.daily_budget import DailyCostLimitReached, assert_paid_job_allowed
 from app.core.generate_character import enqueue_character_task, reference_filename
 from app.models.character import Character
@@ -20,7 +20,7 @@ from app.schemas.character import CharacterAssetRead, CharacterCreate, Character
 from app.schemas.style import StyleRead
 from app.storage import StorageError, upload_fileobj
 
-router = APIRouter(prefix="/api/characters", tags=["characters"])
+router = APIRouter(prefix="/api/characters", tags=["characters"], dependencies=[require_owner])
 
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 TASK_BASE = "scenecraft.generate_character_base_image"

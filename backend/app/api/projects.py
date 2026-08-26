@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.api.deps import DbDep
+from app.api.deps import DbDep, require_owner
 from app.core.daily_budget import DailyCostLimitReached
 from app.core.export_project import export_project
 from app.core.generate_description import DescriptionError, confirm_description, enqueue_description_generate
@@ -62,7 +62,7 @@ from app.schemas.project import (
 )
 from app.storage import StorageError
 
-router = APIRouter(prefix="/api/projects", tags=["projects"])
+router = APIRouter(prefix="/api/projects", tags=["projects"], dependencies=[require_owner])
 
 
 class CreateProjectInput:

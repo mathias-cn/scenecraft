@@ -5,12 +5,12 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from app.api.deps import DbDep
+from app.api.deps import DbDep, require_owner
 from app.core.style_links import STYLE_IN_USE_MESSAGE, style_is_in_use
 from app.models.style import Style
 from app.schemas.style import StyleCreate, StylePatch, StyleRead
 
-router = APIRouter(prefix="/api/styles", tags=["styles"])
+router = APIRouter(prefix="/api/styles", tags=["styles"], dependencies=[require_owner])
 
 
 @router.get("")

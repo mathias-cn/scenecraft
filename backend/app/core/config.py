@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     cloudflare_api_token: str = ""
 
     cors_origins: str = "http://localhost:3000"
+    owner_email: str = ""
+    better_auth_jwks_url: str = "https://scenecraft.mazting.studio/api/auth/jwks"
 
     celery_loglevel: str = "info"
     celery_task_max_retries: int = Field(default=2, ge=0, le=10)

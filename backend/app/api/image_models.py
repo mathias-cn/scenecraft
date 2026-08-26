@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 
+from app.api.deps import require_owner
 from app.providers.image_provider import (
     DEFAULT_IMAGE_PROVIDER,
     IMAGE_PROVIDERS,
@@ -10,7 +11,7 @@ from app.providers.image_provider import (
 )
 from app.schemas.project import ImageModelRead
 
-router = APIRouter(prefix="/api/image-models", tags=["image-models"])
+router = APIRouter(prefix="/api/image-models", tags=["image-models"], dependencies=[require_owner])
 
 
 @router.get("")

@@ -4,11 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.deps import require_owner
 from app.db import get_db
 from app.models.job import Job
 from app.schemas.job import JobRead
 
-router = APIRouter(prefix="/api/jobs", tags=["jobs"])
+router = APIRouter(prefix="/api/jobs", tags=["jobs"], dependencies=[require_owner])
 
 
 @router.get("", response_model=list[JobRead])

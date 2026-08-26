@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 
-from app.api.deps import DbDep
+from app.api.deps import DbDep, require_owner
 from app.core.daily_budget import DailyCostLimitReached, assert_paid_job_allowed
 from app.models.title_suggestion import TitleSuggestion
 from app.providers.llm_client import LLMError, generate_titles
 from app.providers.pricing import as_usd
 
-router = APIRouter(prefix="/api/ai", tags=["ai"])
+router = APIRouter(prefix="/api/ai", tags=["ai"], dependencies=[require_owner])
 
 
 class TitleGenerateRequest(BaseModel):

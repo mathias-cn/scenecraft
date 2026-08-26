@@ -3,13 +3,13 @@ from decimal import Decimal
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
-from app.api.deps import DbDep
+from app.api.deps import DbDep, require_owner
 from app.core.app_settings import save_daily_cost_limit_usd
 from app.core.daily_budget import configured_daily_limit_usd, daily_budget_snapshot
 from app.core.project_cost import COST_TIMEZONE, load_cost_series
 from app.schemas.project import CostBudgetRead, CostSeriesRead
 
-router = APIRouter(prefix="/api/costs", tags=["costs"])
+router = APIRouter(prefix="/api/costs", tags=["costs"], dependencies=[require_owner])
 
 
 class CostBudgetUpdate(BaseModel):

@@ -23,6 +23,7 @@ openai = "^1.51.0"
 # A partir de 2025/2026, nsig exige yt-dlp-ejs + um runtime JS (Deno via extra).
 yt-dlp = { extras = ["default", "deno"], version = ">=2026.8.19" }
 pydub = "^0.25.1"
+pyjwt = {extras = ["crypto"], version = "^2.13.0"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3.3"

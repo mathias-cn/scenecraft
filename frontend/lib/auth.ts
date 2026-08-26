@@ -102,6 +102,9 @@ export const auth = betterAuth({
   },
   plugins: [
     jwt({
+      jwks: {
+        keyPairConfig: { alg: "RS256" },
+      },
       jwt: {
         issuer: process.env.BETTER_AUTH_URL,
         audience: process.env.NEXT_PUBLIC_API_URL || "scenecraft-api",
