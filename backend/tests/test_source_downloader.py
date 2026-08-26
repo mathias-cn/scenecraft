@@ -82,6 +82,14 @@ def test_download_from_youtube_writes_mp3(monkeypatch, tmp_path):
         ("Sign in to confirm your age", "youtube_age_restricted", "idade"),
         ("This video is members-only", "youtube_members_only", "membros"),
         ("The uploader has not made this video available in your country", "youtube_geo_blocked", "região"),
+        (
+            "WARNING: [youtube] nsig extraction failed: Some formats may be missing. "
+            "ERROR: [youtube] Requested format is not available. Only images are available for download",
+            "youtube_extractor_outdated",
+            "yt-dlp",
+        ),
+        ("ERROR: [youtube] Requested format is not available", "youtube_extractor_outdated", "formato"),
+        ("ERROR: Only images are available for download", "youtube_extractor_outdated", "yt-dlp"),
     ],
 )
 def test_classify_youtube_error_messages_are_ui_ready(raw: str, code: str, snippet: str):
@@ -89,6 +97,11 @@ def test_classify_youtube_error_messages_are_ui_ready(raw: str, code: str, snipp
     assert isinstance(err, YoutubeDownloadError)
     assert err.code == code
     assert snippet in err.ui_message.lower()
+
+
+def test_classify_youtube_error_keeps_geo_block_distinct_from_extractor_failure():
+    err = classify_youtube_error(RuntimeError("This video is not available in your country"))
+    assert err.code == "youtube_geo_blocked"
 
 
 def test_download_from_youtube_maps_private_video(monkeypatch, tmp_path):

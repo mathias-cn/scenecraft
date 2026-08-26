@@ -148,6 +148,13 @@ git pull
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+O ingest de YouTube depende do **yt-dlp**. O YouTube quebra extratores antigos com frequência. Depois de um `poetry update yt-dlp` (ou se os logs mostrarem `nsig extraction failed` / `Requested format is not available`), reconstrua **sem cache** para não reaproveitar a camada do pip:
+
+```bash
+docker compose -f docker-compose.prod.yml build --no-cache api worker
+docker compose -f docker-compose.prod.yml up -d api worker
+```
+
 ## 7. Atalho: script
 
 Com Ubuntu já acessível via SSH:

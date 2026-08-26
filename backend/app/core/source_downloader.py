@@ -1,7 +1,14 @@
-"""Carrega o áudio de origem do projeto (YouTube ou arquivo já enviado)."""
+"""Carrega o áudio de origem do projeto (YouTube ou arquivo já enviado).
+
+O YouTube altera o algoritmo de assinatura (nsig) com frequência e quebra
+extratores antigos. Atualize `yt-dlp` no `pyproject.toml` / `poetry.lock` pelo
+menos uma vez por mês e reconstrua a imagem do backend sem cache dessa camada.
+Versões recentes também precisam de `yt-dlp-ejs` e de um runtime JS (Deno).
+"""
 
 from __future__ import annotations
 
+import logging
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -19,6 +26,17 @@ YOUTUBE_HOSTS = {
 }
 
 AUDIO_CODECS = ("mp3", "wav")
+
+logger = logging.getLogger(__name__)
+
+# Sintomas clássicos de yt-dlp desatualizado (YouTube mudou o nsig).
+_EXTRACTOR_NEEDLES = (
+    "nsig extraction failed",
+    "requested format is not available",
+    "only images are available",
+    "format is not available",
+    "some formats may be missing",
+)
 
 
 class SourceDownloadError(Exception):
@@ -116,6 +134,17 @@ def download_youtube_audio(url: str, dest_dir: Path) -> Path:
 def classify_youtube_error(exc: BaseException) -> YoutubeDownloadError:
     """Traduz erros do yt-dlp para mensagens estáveis da UI."""
     text = " ".join(part for part in (str(exc), getattr(exc, "msg", None)) if part).lower()
+    if any(needle in text for needle in _EXTRACTOR_NEEDLES):
+        logger.warning(
+            "falha de extração do YouTube (possível yt-dlp desatualizado, versão %s): %s",
+            _yt_dlp_version(),
+            text[:500],
+        )
+        return YoutubeDownloadError(
+            "Não foi possível extrair o áudio deste vídeo (formato indisponível). "
+            "Isso costuma indicar yt-dlp desatualizado — atualize a dependência e reconstrua a imagem.",
+            code="youtube_extractor_outdated",
+        )
     rules: tuple[tuple[tuple[str, ...], str, str], ...] = (
         (
             ("private video", "this video is private"),
@@ -165,6 +194,20 @@ def classify_youtube_error(exc: BaseException) -> YoutubeDownloadError:
         "Não foi possível baixar este vídeo do YouTube. Verifique se o link está público.",
         code="youtube_unavailable",
     )
+
+
+def _yt_dlp_version() -> str:
+    try:
+        import yt_dlp
+
+        version_mod = getattr(yt_dlp, "version", None)
+        if version_mod is not None:
+            pinned = getattr(version_mod, "__version__", None)
+            if pinned:
+                return str(pinned)
+        return str(getattr(yt_dlp, "__version__", "?"))
+    except Exception:
+        return "?"
 
 
 def _extract_youtube_audio(yt_dlp, url: str, dest: Path, codec: str) -> Path | None:

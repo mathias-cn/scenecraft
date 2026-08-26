@@ -19,7 +19,9 @@ httpx = "^0.27.2"
 boto3 = "^1.35.0"
 alembic = "^1.14.0"
 openai = "^1.51.0"
-yt-dlp = "^2024.12.13"
+# YouTube quebra o nsig com frequência: atualize yt-dlp (e o lock) pelo menos mensalmente.
+# A partir de 2025/2026, nsig exige yt-dlp-ejs + um runtime JS (Deno via extra).
+yt-dlp = { extras = ["default", "deno"], version = ">=2026.8.19" }
 pydub = "^0.25.1"
 
 [tool.poetry.group.dev.dependencies]

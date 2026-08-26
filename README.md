@@ -123,6 +123,14 @@ docker compose down
 
 Não há Postgres neste arquivo: o banco é o projeto Supabase configurado no `.env`.
 
+O ingest de YouTube usa **yt-dlp**. O YouTube muda o algoritmo de assinatura (`nsig`) com frequência e quebra extratores antigos — isso não é um bug pontual, é manutenção recorrente. Atualize `yt-dlp` no `backend/pyproject.toml` / `backend/poetry.lock` **pelo menos uma vez por mês** (`cd backend && poetry update yt-dlp`) e reconstrua `api`/`worker` **sem cache** dessa camada:
+
+```bash
+docker compose build --no-cache api worker
+```
+
+Em produção, o mesmo vale com `docker compose -f docker-compose.prod.yml build --no-cache api worker`. A partir de 2025/2026 o nsig também exige o extra `yt-dlp-ejs` e um runtime JS (incluídos via `yt-dlp[default,deno]`). Se o log mostrar `nsig extraction failed` / `Requested format is not available` / `Only images are available`, a versão do yt-dlp (ou o runtime JS) está desatualizada.
+
 ## Variáveis de ambiente
 
 Veja `.env.example`. As principais:
