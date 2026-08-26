@@ -44,6 +44,8 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000"
     owner_email: str = ""
+    better_auth_url: str = ""
+    next_public_api_url: str = ""
     better_auth_jwks_url: str = "https://scenecraft.mazting.studio/api/auth/jwks"
 
     celery_loglevel: str = "info"

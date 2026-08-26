@@ -26,6 +26,37 @@ function readJwtExpiry(token: string): number {
   }
 }
 
+function isJwt(token: string): boolean {
+  return token.split(".").length === 3;
+}
+
+async function fetchAccessToken(): Promise<string | null> {
+  const client = authClient as typeof authClient & {
+    token?: () => Promise<{ data?: TokenResponse | null; error?: unknown }>;
+    $fetch: (
+      path: string,
+      init?: { method?: string },
+    ) => Promise<{ data?: TokenResponse | null; error?: unknown }>;
+  };
+
+  if (typeof client.token === "function") {
+    const result = await client.token();
+    if (!result.error) {
+      const token = result.data?.token;
+      if (token && isJwt(token)) {
+        return token;
+      }
+    }
+  }
+
+  const fallback = await client.$fetch("/token", { method: "GET" });
+  if (fallback.error) {
+    return null;
+  }
+  const token = fallback.data?.token;
+  return token && isJwt(token) ? token : null;
+}
+
 /** JWT da sessão atual, ou `null` se não houver sessão. */
 export async function getSessionToken(): Promise<string | null> {
   const now = Date.now();
@@ -33,12 +64,7 @@ export async function getSessionToken(): Promise<string | null> {
     return cachedToken.value;
   }
 
-  const result = await authClient.token();
-  if (result.error) {
-    cachedToken = null;
-    return null;
-  }
-  const token = (result.data as TokenResponse | null)?.token;
+  const token = await fetchAccessToken();
   if (!token) {
     cachedToken = null;
     return null;

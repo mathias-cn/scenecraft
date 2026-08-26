@@ -2,20 +2,25 @@
 
 from __future__ import annotations
 
+import logging
 import threading
-import time
 from dataclasses import dataclass
 from typing import Annotated, Any
 
-import httpx
 import jwt
 from fastapi import Header, HTTPException, status
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 JWKS_TTL_SECONDS = 3600
+ALLOWED_ALGORITHMS = frozenset({"RS256", "EdDSA", "ES256", "ES512", "PS256"})
+
 _JWKS_LOCK = threading.Lock()
-_jwks_cache: tuple[float, dict[str, Any]] | None = None
+_jwks_client: jwt.PyJWKClient | None = None
+_jwks_client_url: str | None = None
+
 
 def _unauthorized() -> HTTPException:
     return HTTPException(
@@ -31,91 +36,104 @@ class CurrentUser:
     subject: str
 
 
-def get_jwks() -> dict[str, Any]:
-    """Busca o JWKS do Better Auth e guarda em cache por 1 hora."""
-    global _jwks_cache
-    now = time.monotonic()
-    cached = _jwks_cache
-    if cached is not None and now - cached[0] < JWKS_TTL_SECONDS:
-        return cached[1]
-
+def _get_jwks_client() -> jwt.PyJWKClient:
+    """PyJWKClient com cache do JWKS (TTL 1h). Recria se a URL mudar."""
+    global _jwks_client, _jwks_client_url
+    url = (settings.better_auth_jwks_url or "").strip()
+    if not url:
+        raise _unauthorized()
     with _JWKS_LOCK:
-        cached = _jwks_cache
-        if cached is not None and now - cached[0] < JWKS_TTL_SECONDS:
-            return cached[1]
-        try:
-            with httpx.Client(timeout=10.0) as client:
-                response = client.get(settings.better_auth_jwks_url)
-                response.raise_for_status()
-                payload = response.json()
-        except (httpx.HTTPError, ValueError) as exc:
-            raise _unauthorized() from exc
-        if not isinstance(payload, dict):
-            raise _unauthorized()
-        _jwks_cache = (time.monotonic(), payload)
-        return payload
+        if _jwks_client is None or _jwks_client_url != url:
+            _jwks_client = jwt.PyJWKClient(
+                url,
+                cache_jwk_set=True,
+                lifespan=JWKS_TTL_SECONDS,
+                timeout=10,
+            )
+            _jwks_client_url = url
+        return _jwks_client
 
 
 def clear_jwks_cache() -> None:
-    global _jwks_cache
+    global _jwks_client, _jwks_client_url
     with _JWKS_LOCK:
-        _jwks_cache = None
+        _jwks_client = None
+        _jwks_client_url = None
 
 
 def get_current_user(
     authorization: Annotated[str | None, Header()] = None,
 ) -> CurrentUser:
-    """Valida o Bearer JWT (RS256 + JWKS) e exige o email do dono."""
+    """Valida o Bearer JWT via JWKS (alg da chave) e exige o email do dono."""
+    if not authorization:
+        logger.warning("auth failed: missing Authorization header")
+        raise _unauthorized()
     token = _bearer_token(authorization)
     try:
-        signing_key = _signing_key(token)
-        claims = jwt.decode(
-            token,
-            signing_key.key,
-            algorithms=["RS256"],
-            options={"require": ["exp"]},
-        )
+        claims = _decode_token(token)
     except jwt.PyJWTError as exc:
+        logger.warning("auth failed: %s", type(exc).__name__)
         raise _unauthorized() from exc
 
-    email = str(claims.get("email") or "").strip()
+    email = _email_from_claims(claims)
     owner = (settings.owner_email or "").strip()
-    if not owner or email.lower() != owner.lower():
+    if not owner:
+        logger.warning("auth failed: OWNER_EMAIL is not configured")
+        raise _unauthorized()
+    if email.lower() != owner.lower():
+        logger.warning("auth failed: email claim does not match owner")
         raise _unauthorized()
 
-    subject = str(claims.get("sub") or "").strip()
+    subject = str(claims.get("sub") or claims.get("id") or "").strip()
     return CurrentUser(email=email, subject=subject)
 
 
-def _bearer_token(authorization: str | None) -> str:
-    if not authorization:
-        raise _unauthorized()
+def _decode_token(token: str) -> dict[str, Any]:
+    client = _get_jwks_client()
+    signing_key = client.get_signing_key_from_jwt(token)
+    algorithm = signing_key.algorithm_name
+    if algorithm not in ALLOWED_ALGORITHMS:
+        raise jwt.InvalidAlgorithmError("Unsupported signing algorithm")
+
+    issuer = (settings.better_auth_url or "").strip()
+    audience = (settings.next_public_api_url or "").strip()
+    options: dict[str, Any] = {"require": ["exp"]}
+    decode_kwargs: dict[str, Any] = {
+        "algorithms": [algorithm],
+        "options": options,
+        "leeway": 30,
+    }
+    if issuer:
+        decode_kwargs["issuer"] = issuer
+    else:
+        options["verify_iss"] = False
+    if audience:
+        decode_kwargs["audience"] = audience
+    else:
+        # PyJWT 2.13+ rejeita tokens com `aud` se audience= não for passado.
+        options["verify_aud"] = False
+
+    claims = jwt.decode(token, signing_key.key, **decode_kwargs)
+    if not isinstance(claims, dict):
+        raise jwt.InvalidTokenError("JWT payload must be an object")
+    return claims
+
+
+def _bearer_token(authorization: str) -> str:
     scheme, _, credentials = authorization.partition(" ")
     if scheme.lower() != "bearer" or not credentials.strip():
+        logger.warning("auth failed: malformed Authorization header")
         raise _unauthorized()
     return credentials.strip()
 
 
-def _signing_key(token: str) -> jwt.PyJWK:
-    try:
-        header = jwt.get_unverified_header(token)
-    except jwt.PyJWTError as exc:
-        raise _unauthorized() from exc
-    kid = header.get("kid")
-    jwks = get_jwks()
-    keys = jwks.get("keys")
-    if not isinstance(keys, list):
-        raise _unauthorized()
-    for key_data in keys:
-        if not isinstance(key_data, dict):
-            continue
-        if kid and key_data.get("kid") not in (None, kid):
-            continue
-        alg = key_data.get("alg")
-        if alg and alg != "RS256":
-            continue
-        try:
-            return jwt.PyJWK.from_dict(key_data)
-        except jwt.PyJWTError:
-            continue
-    raise _unauthorized()
+def _email_from_claims(claims: dict[str, Any]) -> str:
+    email = claims.get("email")
+    if isinstance(email, str) and email.strip():
+        return email.strip()
+    user = claims.get("user")
+    if isinstance(user, dict):
+        nested = user.get("email")
+        if isinstance(nested, str) and nested.strip():
+            return nested.strip()
+    return ""

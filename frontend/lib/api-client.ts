@@ -76,7 +76,8 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
       const { redirect } = await import("next/navigation");
       redirect("/login");
     }
-    headers.set("Authorization", `Bearer ${await getBrowserAccessToken()}`);
+    const token = await getBrowserAccessToken();
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const response = await fetch(joinUrl(path), {

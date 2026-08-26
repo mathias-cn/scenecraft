@@ -110,6 +110,7 @@ export const auth = betterAuth({
         audience: process.env.NEXT_PUBLIC_API_URL || "scenecraft-api",
         expirationTime: "15m",
         definePayload: ({ user }) => ({
+          id: user.id,
           email: user.email,
         }),
       },
