@@ -108,6 +108,10 @@ export function exportProject(id: string) {
   return apiGet<ProjectExport>(`/api/projects/${id}/export`);
 }
 
+export function completeProject(id: string) {
+  return apiPost<ProjectDetail>(`/api/projects/${id}/complete`);
+}
+
 export function listStyles(active?: boolean) {
   const query = active === undefined ? "" : `?active=${active ? "true" : "false"}`;
   return apiGet<Style[]>(`/api/styles${query}`);

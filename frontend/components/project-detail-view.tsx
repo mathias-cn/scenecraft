@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
+import { CompletedPack } from "@/components/completed-pack";
 import { PipelineTimeline } from "@/components/pipeline-timeline";
 import { ReviewCard } from "@/components/review-card";
 import { StatusBadge } from "@/components/status-badge";
 import { getProject, retryProjectStage } from "@/lib/api";
 import { isJobRunning } from "@/lib/pipeline";
-import { STAGE_LABEL, formatCreatedAt } from "@/lib/project-ui";
+import { STAGE_LABEL, formatCreatedAt, isCompletedPack } from "@/lib/project-ui";
 import type { ProjectDetail } from "@/lib/types";
 
 const POLL_MS = 5000;
@@ -34,6 +35,7 @@ export function ProjectDetailView({ initial }: ProjectDetailViewProps) {
   const [pollError, setPollError] = useState<string | null>(null);
   const [retryBusy, setRetryBusy] = useState(false);
   const running = isJobRunning(project.status, project.jobs);
+  const packReady = isCompletedPack(project);
 
   const refresh = useCallback(async () => {
     try {
@@ -108,13 +110,17 @@ export function ProjectDetailView({ initial }: ProjectDetailViewProps) {
         <p className="mt-4 font-mono text-xs text-red-300">{pollError}</p>
       ) : null}
 
-      {project.status === "paused_for_review" ? (
+      {packReady ? (
+        <div className="mt-6">
+          <CompletedPack project={project} onUpdated={(next) => setProject(normalize(next))} />
+        </div>
+      ) : project.status === "paused_for_review" ? (
         <div className="mt-6">
           <ReviewCard project={project} onUpdated={(next) => setProject(normalize(next))} />
         </div>
       ) : null}
 
-      {running ? (
+      {running && !packReady ? (
         <p className="mt-6 rounded-xl border border-white/10 bg-ink-900 px-4 py-3 text-sm text-white/50">
           Job em execução em <span className="font-mono text-brass-400">{STAGE_LABEL[project.current_stage]}</span>
           . A timeline atualiza sozinha.

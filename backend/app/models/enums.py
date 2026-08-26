@@ -24,6 +24,7 @@ class ProjectStage(str, enum.Enum):
     READY_TO_PUBLISH = "ready_to_publish"
     UPLOADING = "uploading"
     PUBLISHED = "published"
+    COMPLETED = "completed"
     FAILED = "failed"
 
 

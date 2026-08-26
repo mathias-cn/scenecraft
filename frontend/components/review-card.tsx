@@ -59,7 +59,7 @@ export function ReviewCard({ project, onUpdated }: ReviewCardProps) {
                   : isThumbnailStage
                     ? "Gere uma thumbnail com IA ou envie a sua. Qualquer uma das opções é salva antes de avançar."
                     : isDescriptionStage
-                      ? "Edite o parágrafo e as tags. Regenerar pede de novo ao modelo; Confirmar salva o texto final e segue o pipeline."
+                      ? "Edite o parágrafo e as tags. Regenerar pede de novo ao modelo; Confirmar salva e abre o pacote final."
                       : "Confira o resultado deste estágio. Ao aprovar, o pipeline segue para o próximo."}
       </p>
       {isTranscript ? (

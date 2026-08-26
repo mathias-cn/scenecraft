@@ -8,6 +8,7 @@ from app.core.state_machine import (
     ProjectNotFound,
     advance_stage,
     auto_flag_enabled,
+    complete_project,
     is_valid_transition,
     linear_next,
     parse_stage,
@@ -28,8 +29,8 @@ def test_linear_next_follows_declared_order():
     assert linear_next(ProjectStage.CREATED) is ProjectStage.TRANSCRIBING
     assert linear_next(ProjectStage.TRANSCRIBING) is ProjectStage.TRANSCRIPT_REVIEW
     assert linear_next(ProjectStage.TRANSCRIPT_REVIEW) is ProjectStage.SCENE_PLANNING
-    assert linear_next(ProjectStage.READY_TO_PUBLISH) is ProjectStage.UPLOADING
-    assert linear_next(ProjectStage.UPLOADING) is ProjectStage.PUBLISHED
+    assert linear_next(ProjectStage.DESCRIPTION_STAGE) is ProjectStage.COMPLETED
+    assert linear_next(ProjectStage.COMPLETED) is None
     assert linear_next(ProjectStage.PUBLISHED) is None
     assert linear_next(ProjectStage.FAILED) is None
 
@@ -43,12 +44,13 @@ def test_linear_next_follows_declared_order():
         (ProjectStage.GENERATING_MEDIA, ProjectStage.MEDIA_REVIEW, True),
         (ProjectStage.AUDIO_STAGE, ProjectStage.AUDIO_REVIEW, True),
         (ProjectStage.RENDERING, ProjectStage.RENDER_REVIEW, True),
-        (ProjectStage.UPLOADING, ProjectStage.PUBLISHED, True),
+        (ProjectStage.DESCRIPTION_STAGE, ProjectStage.COMPLETED, True),
         (ProjectStage.CREATED, ProjectStage.SCENE_PLANNING, False),
         (ProjectStage.TRANSCRIBING, ProjectStage.CREATED, False),
-        (ProjectStage.PUBLISHED, ProjectStage.UPLOADING, False),
+        (ProjectStage.COMPLETED, ProjectStage.DESCRIPTION_STAGE, False),
         (ProjectStage.FAILED, ProjectStage.CREATED, False),
         (ProjectStage.CREATED, ProjectStage.FAILED, True),
+        (ProjectStage.COMPLETED, ProjectStage.FAILED, False),
         (ProjectStage.PUBLISHED, ProjectStage.FAILED, False),
         (ProjectStage.FAILED, ProjectStage.FAILED, False),
     ],
@@ -62,9 +64,8 @@ def test_auto_flag_for_review_stages():
     assert auto_flag_enabled({"auto_transcribe": "true"}, ProjectStage.TRANSCRIPT_REVIEW)
     assert not auto_flag_enabled({}, ProjectStage.TRANSCRIPT_REVIEW)
     assert not auto_flag_enabled({"auto_transcribe": True}, ProjectStage.SCENE_REVIEW)
-    assert auto_flag_enabled({"auto_publish": True}, ProjectStage.READY_TO_PUBLISH)
     assert auto_flag_enabled({"auto_media_gen": True}, ProjectStage.MEDIA_REVIEW)
-    assert auto_flag_enabled({"auto_description": True}, ProjectStage.READY_TO_PUBLISH)
+    assert not auto_flag_enabled({"auto_description": True}, ProjectStage.READY_TO_PUBLISH)
     assert not auto_flag_enabled({"auto_media_gen": False}, ProjectStage.MEDIA_REVIEW)
 
 
@@ -208,46 +209,35 @@ def test_manual_review_resume_dispatches_next_work(monkeypatch):
     assert enqueued == ["scene_planning"]
 
 
-def test_uploading_advances_to_published(monkeypatch):
+def test_description_stage_completes_without_upload(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
-    project = _project(current_stage=ProjectStage.UPLOADING, status=ProjectStatus.RUNNING)
+    project = _project(
+        current_stage=ProjectStage.DESCRIPTION_STAGE,
+        descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
+    )
     db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.UPLOADING, db=db)
-    assert result.to_stage is ProjectStage.PUBLISHED
+    result = advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
+    assert result.to_stage is ProjectStage.COMPLETED
+    assert result.paused_for_review is False
     assert project.status is ProjectStatus.COMPLETED
     assert result.dispatched_job_id is None
     assert db.added == []
 
 
-def test_ready_to_publish_pauses_without_auto_publish(monkeypatch):
+def test_complete_project_is_idempotent(monkeypatch):
     monkeypatch.setattr("app.core.state_machine.enqueue_job", lambda *a, **k: None)
     project = _project(
-        current_stage=ProjectStage.DESCRIPTION_STAGE,
+        current_stage=ProjectStage.READY_TO_PUBLISH,
+        status=ProjectStatus.PAUSED_FOR_REVIEW,
         descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
     )
     db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
-    assert result.to_stage is ProjectStage.READY_TO_PUBLISH
-    assert result.paused_for_review is True
-    assert project.status is ProjectStatus.PAUSED_FOR_REVIEW
-
-
-def test_auto_publish_starts_upload(monkeypatch):
-    enqueued = []
-    monkeypatch.setattr(
-        "app.core.state_machine.enqueue_job",
-        lambda step, job_id: enqueued.append(step.queue.value),
-    )
-    project = _project(
-        current_stage=ProjectStage.DESCRIPTION_STAGE,
-        automation_config={"auto_publish": True},
-        descriptions=[SimpleNamespace(text="ok", tags=["tag"])],
-    )
-    db = FakeDB(project)
-    result = advance_stage(project.id, ProjectStage.DESCRIPTION_STAGE, db=db)
-    assert result.to_stage is ProjectStage.UPLOADING
-    assert result.auto_advanced is True
-    assert enqueued == ["upload"]
+    result = complete_project(project.id, db=db)
+    assert result.to_stage is ProjectStage.COMPLETED
+    assert project.current_stage is ProjectStage.COMPLETED
+    assert project.status is ProjectStatus.COMPLETED
+    again = complete_project(project.id, db=db)
+    assert again.to_stage is ProjectStage.COMPLETED
 
 
 def test_stage_to_retry_keeps_work_stage():

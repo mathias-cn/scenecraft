@@ -30,9 +30,7 @@ LINEAR_STAGES: tuple[ProjectStage, ...] = (
     ProjectStage.RENDER_REVIEW,
     ProjectStage.THUMBNAIL_STAGE,
     ProjectStage.DESCRIPTION_STAGE,
-    ProjectStage.READY_TO_PUBLISH,
-    ProjectStage.UPLOADING,
-    ProjectStage.PUBLISHED,
+    ProjectStage.COMPLETED,
 )
 
 REVIEW_AUTO_FLAGS: dict[ProjectStage, str] = {
@@ -41,15 +39,13 @@ REVIEW_AUTO_FLAGS: dict[ProjectStage, str] = {
     ProjectStage.MEDIA_REVIEW: "auto_media",
     ProjectStage.AUDIO_REVIEW: "auto_audio",
     ProjectStage.RENDER_REVIEW: "auto_render",
-    ProjectStage.READY_TO_PUBLISH: "auto_publish",
 }
 
 FLAG_ALIASES: dict[str, tuple[str, ...]] = {
     "auto_media": ("auto_media", "auto_media_gen"),
-    "auto_publish": ("auto_publish", "auto_description"),
 }
 
-TERMINAL_STAGES = frozenset({ProjectStage.PUBLISHED, ProjectStage.FAILED})
+TERMINAL_STAGES = frozenset({ProjectStage.COMPLETED, ProjectStage.PUBLISHED, ProjectStage.FAILED})
 
 
 class IllegalTransition(Exception):
@@ -223,8 +219,8 @@ def retry_stage(
     try:
         project = _load_project(session, project_id)
         current = parse_stage(project.current_stage)
-        if current is ProjectStage.PUBLISHED or project.status is ProjectStatus.COMPLETED:
-            raise IllegalTransition("projeto já publicado")
+        if current is ProjectStage.PUBLISHED or current is ProjectStage.COMPLETED or project.status is ProjectStatus.COMPLETED:
+            raise IllegalTransition("projeto já concluído")
         if project.status is ProjectStatus.CANCELLED:
             raise IllegalTransition("projeto cancelado")
         if project.status is not ProjectStatus.FAILED and current is not ProjectStage.FAILED:
@@ -295,7 +291,7 @@ def advance_stage(
         project.current_stage = nxt
         project.updated_at = _now()
 
-        if nxt is ProjectStage.PUBLISHED:
+        if nxt is ProjectStage.COMPLETED or nxt is ProjectStage.PUBLISHED:
             project.status = ProjectStatus.COMPLETED
             session.commit()
             return AdvanceResult(
@@ -417,6 +413,60 @@ def advance_stage(
             status=project.status,
             paused_for_review=False,
             dispatched_job_id=job.id,
+        )
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        if owns:
+            session.close()
+
+
+_PACK_STAGES = frozenset(
+    {
+        ProjectStage.DESCRIPTION_STAGE,
+        ProjectStage.READY_TO_PUBLISH,
+        ProjectStage.UPLOADING,
+        ProjectStage.PUBLISHED,
+        ProjectStage.COMPLETED,
+    }
+)
+
+
+def complete_project(
+    project_id: UUID | str,
+    db: Session | None = None,
+) -> AdvanceResult:
+    """Marca o projeto como `completed` ao chegar na tela final (idempotente)."""
+    session, owns = _session(db)
+    try:
+        project = _load_project(session, project_id)
+        current = parse_stage(project.current_stage)
+        if current is ProjectStage.COMPLETED and project.status is ProjectStatus.COMPLETED:
+            return AdvanceResult(
+                project_id=project.id,
+                from_stage=current,
+                to_stage=current,
+                status=project.status,
+                paused_for_review=False,
+            )
+        if current not in _PACK_STAGES:
+            raise IllegalTransition(f"não é possível concluir a partir de {current.value}")
+        if current is ProjectStage.DESCRIPTION_STAGE:
+            rows = list(getattr(project, "descriptions", None) or [])
+            if not rows:
+                raise IllegalTransition("projeto sem descrição")
+        from_stage = current
+        project.current_stage = ProjectStage.COMPLETED
+        project.status = ProjectStatus.COMPLETED
+        project.updated_at = _now()
+        session.commit()
+        return AdvanceResult(
+            project_id=project.id,
+            from_stage=from_stage,
+            to_stage=ProjectStage.COMPLETED,
+            status=project.status,
+            paused_for_review=False,
         )
     except Exception:
         session.rollback()

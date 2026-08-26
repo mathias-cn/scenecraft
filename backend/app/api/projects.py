@@ -35,6 +35,7 @@ from app.core.state_machine import (
     IllegalTransition,
     ProjectNotFound,
     advance_stage,
+    complete_project,
     retry_stage,
     start_pipeline,
 )
@@ -494,6 +495,18 @@ def upload_project_audio(
     project.status = ProjectStatus.RUNNING
     start_audio_stage_job(db, project, {"audio_generation_mode": "user_upload"})
     db.commit()
+    project = _detail_query(db, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
+    return ProjectDetail.model_validate(project)
+
+
+@router.post("/{project_id}/complete")
+def complete_project_pack(project_id: UUID, db: DbDep) -> ProjectDetail:
+    try:
+        complete_project(project_id, db=db)
+    except (ProjectNotFound, IllegalTransition) as exc:
+        raise _http_for_transition(exc) from exc
     project = _detail_query(db, project_id)
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")

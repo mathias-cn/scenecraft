@@ -17,6 +17,7 @@ export type ProjectStage =
   | "ready_to_publish"
   | "uploading"
   | "published"
+  | "completed"
   | "failed";
 
 export type ProjectStatus =

@@ -17,6 +17,7 @@ export const STAGE_LABEL: Record<ProjectStage, string> = {
   ready_to_publish: "Pronto p/ publicar",
   uploading: "Upload",
   published: "Publicado",
+  completed: "Concluído",
   failed: "Falhou",
 };
 
@@ -48,6 +49,16 @@ export const STATUS_CLASS: Record<StatusTone, string> = {
   pending: "bg-white/10 text-white/55",
   cancelled: "bg-white/5 text-white/35",
 };
+
+export function isCompletedPack(project: { current_stage: ProjectStage; status: ProjectStatus }): boolean {
+  if (project.status === "completed") return true;
+  return (
+    project.current_stage === "completed" ||
+    project.current_stage === "published" ||
+    project.current_stage === "ready_to_publish" ||
+    project.current_stage === "uploading"
+  );
+}
 
 export function formatCreatedAt(iso: string): string {
   const date = new Date(iso);

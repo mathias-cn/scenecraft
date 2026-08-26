@@ -95,7 +95,7 @@ def test_generate_description_saves_text_tags_and_source(monkeypatch):
     result = generate_description(project.id, db=FakeDB(project), write_copy=writer)
     assert result["source"] == DescriptionSource.GENERATED.value
     assert result["advanced"] is True
-    assert project.current_stage is ProjectStage.READY_TO_PUBLISH
+    assert project.current_stage is ProjectStage.COMPLETED
     assert "o mar é azul" in captured[0]["transcript"]
     row = project.descriptions[0]
     assert row.text == result["text"]
@@ -206,7 +206,7 @@ def test_confirm_description_saves_manual_when_edited(monkeypatch):
     assert result["advanced"] is True
     assert db.added[0].source is DescriptionSource.MANUAL
     assert db.added[0].text == "texto editado pelo usuário"
-    assert project.current_stage is ProjectStage.READY_TO_PUBLISH
+    assert project.current_stage is ProjectStage.COMPLETED
 
 
 def test_confirm_description_keeps_generated_when_unchanged(monkeypatch):
