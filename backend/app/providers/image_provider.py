@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 IMAGE_PROVIDERS = frozenset({"higgsfield", "openai"})
-DEFAULT_IMAGE_PROVIDER = "higgsfield"
+DEFAULT_IMAGE_PROVIDER = "openai"
 DEFAULT_IMAGE_SIZE = "1536x1024"
 DEFAULT_IMAGE_QUALITY = "medium"
 OPENAI_IMAGE_MODELS = ("gpt-image-2", "gpt-image-1-mini")

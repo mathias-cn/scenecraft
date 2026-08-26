@@ -159,10 +159,49 @@ def test_project_create_defaults_image_provider():
         source_type=SourceType.YOUTUBE_LINK,
         source_ref="https://youtu.be/x",
     )
-    assert payload.image_provider == "higgsfield"
-    assert payload.automation_config["image_provider"] == "higgsfield"
-    assert payload.automation_config["image_model"] == "higgsfield-ai/soul/v2/standard"
-    assert "image_quality" not in payload.automation_config
+    assert payload.image_provider == "openai"
+    assert payload.automation_config["image_provider"] == "openai"
+    assert payload.automation_config["image_model"] == "gpt-image-2"
+    assert payload.automation_config["image_quality"] == "medium"
+
+
+def test_project_create_defaults_openai_without_higgsfield_key(monkeypatch):
+    monkeypatch.setattr("app.core.config.settings.higgsfield_api_key", "")
+    monkeypatch.setattr("app.core.config.settings.higgsfield_api_secret", "")
+    payload = ProjectCreate(
+        title="clip",
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/x",
+    )
+    assert payload.image_provider == "openai"
+    db = FakeDB(*_scene_project())
+    db.project.automation_config = payload.automation_config
+    fake = FakeProvider("openai")
+    seen = []
+
+    def factory(name):
+        seen.append(name)
+        if name != "openai":
+            raise AssertionError(f"não deve instanciar {name} sem HIGGSFIELD_API_KEY")
+        return fake
+
+    monkeypatch.setattr("app.core.generate_scene_media.get_image_provider", factory)
+    monkeypatch.setattr(
+        "app.core.generate_scene_media.provider_semaphore.hold",
+        lambda name, **kwargs: nullcontext(),
+    )
+    result = generate_scene_media(
+        db.project.id,
+        db.scene.id,
+        db=db,
+        upload=lambda *_a, **_k: "https://cdn.example.com/s.png",
+    )
+    assert result["provider"] == "openai"
+    assert seen == ["openai"]
+    from app.providers.higgsfield_client import HiggsfieldError, higgsfield_auth_headers
+
+    with pytest.raises(HiggsfieldError, match="HIGGSFIELD_API_KEY"):
+        higgsfield_auth_headers()
 
 
 def test_project_create_accepts_openai_image_provider():

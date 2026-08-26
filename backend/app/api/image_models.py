@@ -2,7 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.providers.image_provider import IMAGE_PROVIDERS, ImageProviderError, list_image_models
+from app.providers.image_provider import (
+    DEFAULT_IMAGE_PROVIDER,
+    IMAGE_PROVIDERS,
+    ImageProviderError,
+    list_image_models,
+)
 from app.schemas.project import ImageModelRead
 
 router = APIRouter(prefix="/api/image-models", tags=["image-models"])
@@ -10,9 +15,9 @@ router = APIRouter(prefix="/api/image-models", tags=["image-models"])
 
 @router.get("")
 def list_catalog_image_models(
-    provider: Annotated[str, Query()] = "higgsfield",
+    provider: Annotated[str, Query()] = DEFAULT_IMAGE_PROVIDER,
 ) -> list[ImageModelRead]:
-    name = str(provider or "higgsfield").strip().lower()
+    name = str(provider or DEFAULT_IMAGE_PROVIDER).strip().lower()
     if name not in IMAGE_PROVIDERS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

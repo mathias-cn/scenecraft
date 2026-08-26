@@ -11,6 +11,7 @@ import { createProject } from "@/lib/api";
 import {
   AUDIO_GENERATION_MODES,
   AUTOMATION_TOGGLES,
+  DEFAULT_IMAGE_PROVIDER,
   DEFAULT_IMAGE_QUALITY,
   DEFAULT_OPENAI_MODEL,
   IMAGE_PROVIDERS,
@@ -70,8 +71,8 @@ export function ProjectCreateForm() {
   const [sourceType, setSourceType] = useState<SourceType>("youtube_link");
   const [sourceRef, setSourceRef] = useState("");
   const [language, setLanguage] = useState<TranscriptLanguage>("original");
-  const [imageProvider, setImageProvider] = useState<ImageProviderName>("higgsfield");
-  const [imageModel, setImageModel] = useState("");
+  const [imageProvider, setImageProvider] = useState<ImageProviderName>(DEFAULT_IMAGE_PROVIDER);
+  const [imageModel, setImageModel] = useState(DEFAULT_OPENAI_MODEL);
   const [imageQuality, setImageQuality] = useState<ImageQuality>(DEFAULT_IMAGE_QUALITY);
   const [sceneStyleId, setSceneStyleId] = useState("");
   const [characterId, setCharacterId] = useState("");

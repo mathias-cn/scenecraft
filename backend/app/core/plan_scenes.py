@@ -140,12 +140,7 @@ def _download_audio(url: str, local_path: str) -> Path:
     return download_file(url, local_path)
 
 
-def measure_project_audio_duration_ms(project: Project) -> int | None:
-    """Duração do arquivo de áudio do projeto via ffprobe. None se ainda não houver arquivo."""
-    track = original_audio_track(project) or final_narration_track(project)
-    url = (getattr(track, "file_url", None) or "").strip() if track is not None else ""
-    if not url:
-        return None
+def _probe_audio_file(url: str) -> int:
     suffix = Path(urlparse(url).path).suffix or ".mp3"
     try:
         with tempfile.TemporaryDirectory(prefix="scenecraft-scene-dur-") as tmp:
@@ -155,15 +150,49 @@ def measure_project_audio_duration_ms(project: Project) -> int | None:
         raise
     except Exception as exc:
         raise ScenePlanningError(
+            "não foi possível obter a duração real do áudio armazenado"
+        ) from exc
+
+
+def _probe_source_audio(project: Project, db: Session | None) -> int:
+    """Baixa o áudio de origem (bloqueia até o arquivo existir) e mede com ffprobe."""
+    from app.core.project_audio import persist_original_audio
+    from app.core.source_downloader import SourceDownloadError, load_audio
+
+    try:
+        with tempfile.TemporaryDirectory(prefix="scenecraft-scene-dur-src-") as tmp:
+            path = load_audio(project, Path(tmp))
+            if db is not None:
+                persist_original_audio(db, project, path)
+            return ffprobe_duration_ms(path)
+    except ScenePlanningError:
+        raise
+    except SourceDownloadError as exc:
+        raise ScenePlanningError(
+            f"áudio real ainda não disponível para ffprobe: {exc}"
+        ) from exc
+    except Exception as exc:
+        raise ScenePlanningError(
             f"não foi possível obter a duração real do áudio do projeto {project.id}"
         ) from exc
 
 
-def project_audio_duration_ms(project: Project, segments: Sequence[Any]) -> int:
-    measured = measure_project_audio_duration_ms(project)
-    if measured is not None and measured > 0:
-        return measured
-    return max(_ms(segment, "end_ms") for segment in segments)
+def measure_project_audio_duration_ms(project: Project, db: Session | None = None) -> int:
+    """Duração do arquivo real via ffprobe. Se ainda não houver track, baixa a origem e espera o probe."""
+    track = original_audio_track(project) or final_narration_track(project)
+    url = (getattr(track, "file_url", None) or "").strip() if track is not None else ""
+    if url:
+        return _probe_audio_file(url)
+    return _probe_source_audio(project, db)
+
+
+def project_audio_duration_ms(
+    project: Project,
+    segments: Sequence[Any] | None = None,
+    db: Session | None = None,
+) -> int:
+    del segments  # duração sempre vem do arquivo real, nunca do último transcript_segment
+    return measure_project_audio_duration_ms(project, db=db)
 
 
 def scenes_from_groups(
@@ -236,7 +265,7 @@ def plan_project_scenes(project_id: str | UUID, db: Session | None = None) -> di
         planned = scenes_from_groups(
             grouped,
             ordered,
-            project_audio_duration_ms(project, ordered),
+            project_audio_duration_ms(project, ordered, db=session),
         )
         session.execute(delete(Scene).where(Scene.project_id == project.id))
         for row in planned:

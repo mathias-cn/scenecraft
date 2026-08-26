@@ -100,6 +100,7 @@ def test_plan_project_scenes_enriches_visual_prompt_with_character(monkeypatch):
         ]
 
     monkeypatch.setattr("app.core.plan_scenes.plan_scenes", fake_plan_scenes)
+    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda *_a, **_k: 1200)
     result = plan_project_scenes(project.id, db=db)
     assert result["scene_count"] == 1
     assert db.executed
@@ -188,7 +189,7 @@ def test_plan_project_scenes_closes_gaps_and_extends_last_scene(monkeypatch):
         ]
 
     monkeypatch.setattr("app.core.plan_scenes.plan_scenes", fake_plan_scenes)
-    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda _p: 5000)
+    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda *_a, **_k: 5000)
     result = plan_project_scenes(project.id, db=db)
     assert result["scene_count"] == 2
     first, second = db.added
@@ -240,8 +241,36 @@ def test_ffprobe_duration_ms_raises_on_failure(monkeypatch, tmp_path):
 def test_project_audio_duration_uses_ffprobe_not_last_segment(monkeypatch):
     project = SimpleNamespace(id=uuid4(), audio_tracks=[])
     segments = [SimpleNamespace(end_ms=4000)]
-    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda _p: 5123)
+    monkeypatch.setattr("app.core.plan_scenes.measure_project_audio_duration_ms", lambda *_a, **_k: 5123)
     assert project_audio_duration_ms(project, segments) == 5123
+
+
+def test_project_audio_duration_raises_when_source_unavailable(monkeypatch):
+    from app.core.source_downloader import SourceDownloadError
+
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[], source_ref="")
+    monkeypatch.setattr(
+        "app.core.source_downloader.load_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(SourceDownloadError("ainda sem arquivo")),
+    )
+    with pytest.raises(ScenePlanningError, match="áudio real ainda não disponível"):
+        project_audio_duration_ms(project, [SimpleNamespace(end_ms=4000)])
+
+
+def test_project_audio_duration_probes_source_when_no_track(monkeypatch, tmp_path):
+    audio = tmp_path / "source.mp3"
+    audio.write_bytes(b"x")
+    project = SimpleNamespace(id=uuid4(), audio_tracks=[])
+    persisted = []
+
+    monkeypatch.setattr("app.core.source_downloader.load_audio", lambda *_a, **_k: audio)
+    monkeypatch.setattr(
+        "app.core.project_audio.persist_original_audio",
+        lambda db, proj, path: persisted.append((db, proj, path)) or SimpleNamespace(file_url="s3://b/o.mp3"),
+    )
+    monkeypatch.setattr("app.core.plan_scenes.ffprobe_duration_ms", lambda path: 7777 if path == audio else 0)
+    assert project_audio_duration_ms(project, [SimpleNamespace(end_ms=4000)], db=object()) == 7777
+    assert persisted
 
 
 def test_measure_project_audio_duration_downloads_and_probes(monkeypatch):

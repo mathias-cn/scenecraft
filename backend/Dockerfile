@@ -13,8 +13,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir poetry
 
-COPY pyproject.toml ./
-RUN poetry install --no-ansi --no-root
+COPY pyproject.toml poetry.lock ./
+RUN poetry install --no-ansi --no-root --only main
 
 COPY . .
 

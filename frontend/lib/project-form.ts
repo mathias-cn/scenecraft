@@ -17,9 +17,11 @@ export type TranscriptLanguage = (typeof TRANSCRIPT_LANGUAGES)[number]["value"];
 
 export type ImageProviderName = "higgsfield" | "openai";
 
+export const DEFAULT_IMAGE_PROVIDER: ImageProviderName = "openai";
+
 export const IMAGE_PROVIDERS: { value: ImageProviderName; label: string; hint: string }[] = [
-  { value: "higgsfield", label: "Higgsfield", hint: "Catálogo de modelos da Higgsfield" },
   { value: "openai", label: "OpenAI Image", hint: "gpt-image-2 e gpt-image-1-mini" },
+  { value: "higgsfield", label: "Higgsfield", hint: "Catálogo de modelos da Higgsfield" },
 ];
 
 export const OPENAI_IMAGE_MODELS = [
@@ -101,7 +103,7 @@ export function defaultAutomation(): AutomationConfig {
 
 export function toAutomationPayload(
   flags: AutomationConfig,
-  imageProvider: ImageProviderName = "higgsfield",
+  imageProvider: ImageProviderName = DEFAULT_IMAGE_PROVIDER,
   sceneStyleId?: string,
   characterId?: string,
     extras?: {
@@ -130,7 +132,7 @@ export function toAutomationPayload(
 }
 
 export function imageProviderOf(config: Record<string, unknown> | undefined): ImageProviderName {
-  return config?.image_provider === "openai" ? "openai" : "higgsfield";
+  return config?.image_provider === "higgsfield" ? "higgsfield" : "openai";
 }
 
 export function configString(config: Record<string, unknown> | undefined, key: string): string | null {

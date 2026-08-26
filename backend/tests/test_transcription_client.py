@@ -218,3 +218,14 @@ def test_whisper_model_is_locked_to_whisper_1():
     from app.providers.transcription_client import WHISPER_MODEL
 
     assert WHISPER_MODEL == "whisper-1"
+
+
+def test_pydub_is_installed_for_oversized_chunking():
+    from pydub import AudioSegment
+    from pydub.silence import detect_nonsilent
+
+    from app.providers import transcription_client
+
+    assert AudioSegment is not None
+    assert callable(detect_nonsilent)
+    assert callable(transcription_client._split_oversized_audio)

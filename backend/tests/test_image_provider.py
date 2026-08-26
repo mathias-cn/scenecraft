@@ -64,7 +64,8 @@ def test_factory_returns_matching_clients():
 
 
 def test_parse_image_provider_defaults():
-    assert parse_image_provider({}) == "higgsfield"
+    assert parse_image_provider({}) == "openai"
+    assert parse_image_provider({"image_provider": "higgsfield"}) == "higgsfield"
     assert parse_image_provider({"image_provider": "openai"}) == "openai"
 
 
@@ -138,3 +139,24 @@ def test_list_image_models_openai_is_static():
 
     models = list_image_models("openai")
     assert [item.id for item in models] == ["gpt-image-2", "gpt-image-1-mini"]
+
+
+def test_list_image_models_endpoint_defaults_to_openai_without_higgsfield_key(monkeypatch):
+    from app.api.image_models import list_catalog_image_models
+    from app.providers.image_provider import DEFAULT_IMAGE_PROVIDER
+
+    monkeypatch.setattr("app.core.config.settings.higgsfield_api_key", "")
+    called = []
+
+    def forbidden(*_a, **_k):
+        called.append("higgsfield")
+        raise AssertionError("Higgsfield não deve ser consultada no default")
+
+    monkeypatch.setattr(
+        "app.providers.higgsfield_client.HiggsfieldClient.list_image_models",
+        forbidden,
+    )
+    assert DEFAULT_IMAGE_PROVIDER == "openai"
+    models = list_catalog_image_models()
+    assert [item.id for item in models] == ["gpt-image-2", "gpt-image-1-mini"]
+    assert called == []

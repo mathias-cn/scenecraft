@@ -62,7 +62,7 @@ export function patchTranscript(id: string, segments: TranscriptSegmentPatch[]) 
   return apiPatch<ProjectDetail>(`/api/projects/${id}/transcript`, { segments });
 }
 
-export function listImageModels(provider: "higgsfield" | "openai" = "higgsfield") {
+export function listImageModels(provider: "higgsfield" | "openai" = "openai") {
   return apiGet<ImageModelOption[]>(`/api/image-models?provider=${encodeURIComponent(provider)}`);
 }
 
