@@ -30,6 +30,9 @@ out/
 .turbo
 *.tsbuildinfo
 
+# TLS (Cloudflare Origin CA — origin.key não vai para o git)
+certs/
+
 # Docker
 *.log
 

@@ -1,7 +1,9 @@
 scenecraft.mazting.studio {
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     reverse_proxy frontend:3000
 }
 
 api.mazting.studio {
+    tls /etc/caddy/certs/origin.pem /etc/caddy/certs/origin.key
     reverse_proxy api:8000
 }
