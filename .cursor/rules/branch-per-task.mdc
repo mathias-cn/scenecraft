@@ -1,0 +1,32 @@
+---
+description: Antes de qualquer alteração, criar uma branch da tarefa; ao terminar, perguntar se pode mergear na main.
+alwaysApply: true
+---
+
+# Branch por tarefa (agentes em paralelo)
+
+Nunca editar arquivos em `main`. Toda feature, fix, refactor, docs ou chore usa uma branch própria para vários agentes poderem trabalhar ao mesmo tempo.
+
+## Antes de mexer
+
+1. Confirmar branch e working tree (`git status`, `git branch --show-current`).
+2. Se já estiver na branch desta tarefa, seguir o trabalho.
+3. Se o checkout estiver em `main` (ou limpo e livre), criar e entrar na branch:
+   `git checkout -b <tipo>/<slug-curto>`
+4. Se o checkout já estiver na branch de **outra** tarefa, **não** fazer `git checkout` (isso derruba o outro agente). Criar um worktree:
+   `git worktree add <repo-irmão> -b <tipo>/<slug-curto> origin/main`
+   Depois trabalhar só nesse worktree.
+5. Nomes únicos, prefixo Conventional Commits: `feat/`, `fix/`, `refactor/`, `docs/`, `chore/`. Ex.: `feat/scene-export`.
+
+## Depois de finalizar
+
+1. Sugerir commit e push **nessa branch** (ver rule de commit).
+2. Perguntar: **Posso fazer o merge desta branch na `main`?**
+3. Só mergear se o usuário disser sim. Antes: atualizar `main` (`fetch` + fast-forward), mergear, e só então push de `main` se o usuário confirmar.
+4. Em conflito, parar e reportar. Sem force push em `main`.
+
+## Não fazer
+
+- Não commitar nem mergear na `main` sem pedido explícito.
+- Não trocar a branch de outro agente nem `stash`/`reset` de arquivos que você não criou.
+- Não reutilizar uma branch de tarefa antiga para um assunto diferente.
