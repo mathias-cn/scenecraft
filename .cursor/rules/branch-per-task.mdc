@@ -20,9 +20,9 @@ Nunca editar arquivos em `main`. Toda feature, fix, refactor, docs ou chore usa 
 
 ## Depois de finalizar
 
-1. Sugerir commit e push **nessa branch** (ver rule de commit).
-2. Perguntar: **Posso fazer o merge desta branch na `main`?**
-3. Só mergear se o usuário disser sim. Antes: atualizar `main` (`fetch` + fast-forward), mergear, e só então push de `main` se o usuário confirmar.
+1. Terminar a resposta com o bloco da rule de commit: commit, push, **e** os comandos de merge + exclusão da branch.
+2. Só executar se o usuário disser sim. Ordem: commit → push da branch → atualizar `main` (`fetch` + fast-forward) → merge → push de `main` → apagar a branch local e remota.
+3. Se usou worktree, remover o worktree depois de apagar a branch.
 4. Em conflito, parar e reportar. Sem force push em `main`.
 
 ## Não fazer
@@ -30,3 +30,4 @@ Nunca editar arquivos em `main`. Toda feature, fix, refactor, docs ou chore usa 
 - Não commitar nem mergear na `main` sem pedido explícito.
 - Não trocar a branch de outro agente nem `stash`/`reset` de arquivos que você não criou.
 - Não reutilizar uma branch de tarefa antiga para um assunto diferente.
+- Não deixar branch de tarefa existir depois do merge na `main`.
