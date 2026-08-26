@@ -8,6 +8,12 @@ from app.core.source_downloader import SourceDownloadError, load_audio, load_upl
 from app.models.enums import AudioTrackSource, ProjectStage, SourceType
 from app.providers.transcription_client import Segment, TranscriptionError
 from app.core.transcribe_project import transcribe_project
+from app.core.youtube_captions import (
+    TRANSCRIPT_METHOD_CAPTION_API,
+    TRANSCRIPT_METHOD_WHISPER,
+    TRANSCRIPT_METHOD_WHISPER_FALLBACK,
+    YoutubeCaptionResult,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -127,6 +133,7 @@ def test_transcribe_project_saves_segments_and_advances(monkeypatch, tmp_path):
     assert result["segment_count"] == 2
     assert result["language"] == "pt"
     assert result["translated"] is False
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_WHISPER
     assert db.added[0].text_translated is None
     assert len(db.executed) == 1
     assert [row.index for row in db.added] == [0, 1]
@@ -241,7 +248,7 @@ def test_transcribe_project_uploads_original_before_temp_cleanup(monkeypatch, tm
     audio.write_bytes(b"ID3")
     project = _project(
         source_type=SourceType.YOUTUBE_LINK,
-        source_ref="https://youtu.be/abc",
+        source_ref="https://youtu.be/dQw4w9WgXcQ",
         audio_tracks=[],
     )
     db = RecordingDB(project)
@@ -253,6 +260,7 @@ def test_transcribe_project_uploads_original_before_temp_cleanup(monkeypatch, tm
         persisted.append((session, proj.id, local))
         return SimpleNamespace(cost_usd=None, file_url=f"{proj.id}/original.mp3")
 
+    monkeypatch.setattr("app.core.transcribe_project.fetch_youtube_captions", lambda *_a, **_k: None)
     monkeypatch.setattr("app.core.transcribe_project.persist_original_audio", fake_persist)
     monkeypatch.setattr("app.core.transcribe_project.load_audio", lambda *_a: audio)
     monkeypatch.setattr(
@@ -261,12 +269,150 @@ def test_transcribe_project_uploads_original_before_temp_cleanup(monkeypatch, tm
     )
     monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
 
-    transcribe_project(project.id, db=db)
+    result = transcribe_project(project.id, db=db)
 
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_WHISPER_FALLBACK
     assert len(persisted) == 1
     assert persisted[0][0] is db
     assert persisted[0][1] == project.id
     assert persisted[0][2] == audio
+
+
+def test_transcribe_project_youtube_uses_caption_api_without_whisper(monkeypatch):
+    project = _project(
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        target_language="en",
+    )
+    db = RecordingDB(project)
+    captions = YoutubeCaptionResult(
+        segments=[
+            Segment(start_ms=0, end_ms=1500, text="hello there", language="en"),
+            Segment(start_ms=1500, end_ms=2800, text="how are you", language="en"),
+        ],
+        language="en",
+        video_id="dQw4w9WgXcQ",
+    )
+    monkeypatch.setattr("app.core.transcribe_project.fetch_youtube_captions", lambda *_a, **_k: captions)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.load_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve baixar áudio")),
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve chamar Whisper")),
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.persist_original_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve persistir áudio original")),
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_CAPTION_API
+    assert result["segment_count"] == 2
+    assert result["translated"] is False
+    assert db.added[0].text_original == "hello there"
+    assert db.added[0].start_ms == 0
+    assert db.added[0].end_ms == 1500
+    assert db.added[1].text_original == "how are you"
+
+
+def test_transcribe_project_youtube_caption_api_still_translates(monkeypatch):
+    project = _project(
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/dQw4w9WgXcQ",
+        target_language="pt-BR",
+    )
+    db = RecordingDB(project)
+    captions = YoutubeCaptionResult(
+        segments=[Segment(start_ms=100, end_ms=400, text="hello there", language="en")],
+        language="en",
+        video_id="dQw4w9WgXcQ",
+    )
+    monkeypatch.setattr("app.core.transcribe_project.fetch_youtube_captions", lambda *_a, **_k: captions)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.load_audio",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("não deve baixar áudio")),
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.llm_client.translate_segments",
+        lambda payload, *, target_language, batch_size=20: [
+            {
+                "index": item["index"],
+                "start_ms": 0,
+                "end_ms": 0,
+                "text_original": item["text"],
+                "text_translated": f"pt:{item['text']}",
+            }
+            for item in payload
+        ],
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_CAPTION_API
+    assert result["translated"] is True
+    assert result["language"] == "en"
+    assert db.added[0].text_translated == "pt:hello there"
+
+
+def test_transcribe_project_youtube_falls_back_to_whisper_without_captions(monkeypatch, tmp_path):
+    audio = tmp_path / "yt.wav"
+    audio.write_bytes(b"x")
+    project = _project(
+        source_type=SourceType.YOUTUBE_LINK,
+        source_ref="https://youtu.be/dQw4w9WgXcQ",
+        target_language="en",
+    )
+    db = RecordingDB(project)
+    load_calls: list = []
+    whisper_calls: list = []
+    monkeypatch.setattr("app.core.transcribe_project.fetch_youtube_captions", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.load_audio",
+        lambda proj, dest: load_calls.append((proj, dest)) or audio,
+    )
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: whisper_calls.append(1)
+        or [Segment(start_ms=0, end_ms=10, text="from whisper", language="en")],
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_WHISPER_FALLBACK
+    assert result["segment_count"] == 1
+    assert load_calls and whisper_calls
+    assert db.added[0].text_original == "from whisper"
+
+
+@pytest.mark.parametrize("source_type", [SourceType.UPLOAD_AUDIO, SourceType.UPLOAD_VIDEO])
+def test_transcribe_project_uploads_never_call_caption_api(monkeypatch, tmp_path, source_type):
+    audio = tmp_path / "clip.wav"
+    audio.write_bytes(b"x")
+    project = _project(source_type=source_type, source_ref=str(audio), target_language="en")
+    db = RecordingDB(project)
+    caption_calls: list = []
+    monkeypatch.setattr(
+        "app.core.transcribe_project.fetch_youtube_captions",
+        lambda *_a, **_k: caption_calls.append(1) or None,
+    )
+    monkeypatch.setattr("app.core.transcribe_project.load_audio", lambda *_a: audio)
+    monkeypatch.setattr(
+        "app.core.transcribe_project.transcription_client.transcribe",
+        lambda *_a, **_k: [Segment(start_ms=0, end_ms=10, text="upload", language="en")],
+    )
+    monkeypatch.setattr("app.core.transcribe_project.advance_stage", lambda *_a, **_k: None)
+
+    result = transcribe_project(project.id, db=db)
+
+    assert caption_calls == []
+    assert result["transcript_method"] == TRANSCRIPT_METHOD_WHISPER
+    assert db.added[0].text_original == "upload"
 
 
 def test_persist_original_audio_uploads_object_key_and_records_track(monkeypatch, tmp_path):

@@ -6,7 +6,7 @@ authors = ["SceneCraft"]
 packages = [{ include = "app" }]
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = ">=3.11,<3.15"
 fastapi = "^0.115.0"
 uvicorn = { extras = ["standard"], version = "^0.32.0" }
 celery = { extras = ["redis"], version = "^5.4.0" }
@@ -23,6 +23,8 @@ openai = "^1.51.0"
 # yt-dlp-ejs resolve nsig no client web; o extra deno não substitui o binário no container.
 yt-dlp = { extras = ["default", "deno", "curl-cffi"], version = ">=2026.8.19" }
 yt-dlp-ejs = ">=0.8.0"
+# Legendas oficiais (youtube_link) antes de baixar áudio; Whisper só como fallback.
+youtube-transcript-api = "^1.2.3"
 pydub = "^0.25.1"
 pillow = "^11.0.0"
 pyjwt = {extras = ["crypto"], version = "^2.13.0"}

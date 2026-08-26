@@ -11,7 +11,7 @@ Ao concluir qualquer feature, correção, refatoração ou ação que altere arq
 
 1. Verificar o que mudou (`git status` / `git diff`) antes de redigir a mensagem.
 2. Sugerir **uma** mensagem de commit curta (1–2 frases) focada no **porquê**, não na lista de arquivos.
-3. Oferecer o push para `origin` na branch atual (em geral `main`).
+3. Oferecer o push para `origin` na **branch da tarefa** (nunca push direto na `main` a partir de trabalho em andamento).
 4. Perguntar se deve executar o commit e o push.
 
 ## Formato da sugestão
@@ -28,7 +28,7 @@ Exemplo no fim da resposta:
 
 ```
 Commit sugerido: feat: add scene export so users can reuse layouts
-Push: git push -u origin main
+Push: git push -u origin feat/scene-export
 Quer que eu faça o commit e o push?
 ```
 
