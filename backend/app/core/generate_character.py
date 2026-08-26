@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from io import BytesIO
 from pathlib import Path
 from uuid import UUID
 
@@ -18,7 +17,7 @@ from app.models.style import Style
 from app.providers.image_provider import DEFAULT_IMAGE_QUALITY, DEFAULT_OPENAI_MODEL
 from app.providers.openai_image_client import OpenAIImageClient
 from app.providers.pricing import add_cost
-from app.storage import versioned_filename
+from app.storage import upload_generated_image, versioned_filename
 
 CHARACTER_IMAGE_SIZE = "1024x1536"
 BASE_POSE_INSTRUCTION = "corpo inteiro, fundo neutro, pose neutra"
@@ -141,12 +140,11 @@ def generate_character_base_image(
                 session.commit()
             return {"character_id": str(character.id), "skipped": True, "reason": "status_changed"}
 
-        uploader = upload or _default_upload
-        url = uploader(
-            BytesIO(result.image_bytes),
+        url = upload_generated_image(
+            result.image_bytes,
             f"characters/{character.id}",
-            versioned_filename("base"),
-            content_type="image/png",
+            "base",
+            upload=upload,
         )
         character.base_image_url = url
         session.flush()
@@ -268,12 +266,11 @@ def generate_character_asset(
                 size=CHARACTER_IMAGE_SIZE,
             )
 
-        uploader = upload or _default_upload
-        url = uploader(
-            BytesIO(result.image_bytes),
+        url = upload_generated_image(
+            result.image_bytes,
             f"characters/{character.id}",
-            versioned_filename(parsed.value),
-            content_type="image/png",
+            parsed.value,
+            upload=upload,
         )
         if existing:
             existing.image_url = url
@@ -332,12 +329,6 @@ def _parse_asset_type(asset_type: CharacterAssetType | str) -> CharacterAssetTyp
         return CharacterAssetType(str(asset_type))
     except ValueError as exc:
         raise CharacterImageError(f"asset_type inválido: {asset_type}") from exc
-
-
-def _default_upload(fileobj, prefix: str, filename: str, *, content_type: str | None = None) -> str:
-    from app.storage import upload_fileobj
-
-    return upload_fileobj(fileobj, prefix, filename, content_type=content_type)
 
 
 def _session(db: Session | None) -> tuple[Session, bool]:

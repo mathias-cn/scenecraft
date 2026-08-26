@@ -92,6 +92,20 @@ def test_edit_image_sends_reference_bytes():
     assert recorder[0][1]["prompt"] == "keep identity"
 
 
+def test_edit_image_passes_webp_bytes_without_reconverting():
+    from app.storage import compress_image
+
+    recorder: list = []
+    client = OpenAIImageClient(client=_client(recorder=recorder))
+    webp = compress_image(base64.b64decode(_PNG_B64))
+    result = client.edit_image("keep identity", webp, model="gpt-image-2")
+    assert result.image_bytes == base64.b64decode(_PNG_B64)
+    payload = recorder[0][1]["image"]
+    assert payload[1] is webp
+    assert payload[0] == "reference.webp"
+    assert payload[2] == "image/webp"
+
+
 def test_edit_empty_image_raises():
     with pytest.raises(ImageProviderError, match="referência"):
         OpenAIImageClient(client=_client()).edit_image("x", b"")

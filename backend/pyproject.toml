@@ -24,6 +24,7 @@ openai = "^1.51.0"
 yt-dlp = { extras = ["default", "deno", "curl-cffi"], version = ">=2026.8.19" }
 yt-dlp-ejs = ">=0.8.0"
 pydub = "^0.25.1"
+pillow = "^11.0.0"
 pyjwt = {extras = ["crypto"], version = "^2.13.0"}
 
 [tool.poetry.group.dev.dependencies]

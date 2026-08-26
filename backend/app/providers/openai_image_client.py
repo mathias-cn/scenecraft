@@ -91,6 +91,19 @@ def _is_moderation_error(exc: BaseException) -> bool:
     return "moderation_blocked" in text or "safety system" in text
 
 
+def _reference_image_meta(image_bytes: bytes) -> tuple[str, str]:
+    """Nome e MIME da referência para `images.edit` — WEBP segue sem reconversão."""
+    if len(image_bytes) >= 12 and image_bytes.startswith(b"RIFF") and image_bytes[8:12] == b"WEBP":
+        return "reference.webp", "image/webp"
+    if image_bytes.startswith(b"\x89PNG"):
+        return "reference.png", "image/png"
+    if image_bytes.startswith(b"\xff\xd8"):
+        return "reference.jpg", "image/jpeg"
+    if image_bytes.startswith((b"GIF87a", b"GIF89a")):
+        return "reference.gif", "image/gif"
+    return "reference.png", "image/png"
+
+
 class OpenAIImageClient(ImageProvider):
     def __init__(self, client: Any | None = None) -> None:
         self._client = client
@@ -156,8 +169,12 @@ class OpenAIImageClient(ImageProvider):
         if not image_bytes:
             raise ImageProviderError("imagem de referência vazia")
 
-        filename = str(kwargs.get("filename") or "reference.png")
-        content_type = str(kwargs.get("content_type") or "image/png")
+        filename = str(kwargs.get("filename") or "")
+        content_type = str(kwargs.get("content_type") or "")
+        if not filename or not content_type:
+            inferred_name, inferred_type = _reference_image_meta(image_bytes)
+            filename = filename or inferred_name
+            content_type = content_type or inferred_type
         try:
             response = self._sdk().images.edit(
                 model=model,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -118,16 +117,13 @@ def generate_thumbnail(
             raise ThumbnailError("ImageProvider devolveu imagem vazia")
         cost = add_usd(summary_cost, prompt_cost, result.cost_usd)
 
-        from app.storage import versioned_filename
+        from app.storage import upload_generated_image
 
-        if upload is None:
-            from app.storage import upload_fileobj as upload
-
-        url = upload(
-            BytesIO(result.image_bytes),
+        url = upload_generated_image(
+            result.image_bytes,
             str(project.id),
-            versioned_filename("thumbnail"),
-            content_type="image/png",
+            "thumbnail",
+            upload=upload,
         )
         thumb = Thumbnail(
             project_id=project.id,

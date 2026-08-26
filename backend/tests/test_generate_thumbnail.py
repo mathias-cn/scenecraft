@@ -16,6 +16,10 @@ from app.models.project import Project
 from app.models.thumbnail import Thumbnail
 from app.providers.image_provider import ImageResult
 
+_TINY_PNG = __import__("base64").b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
 
 class FakeDB:
     def __init__(self, project):
@@ -50,7 +54,7 @@ class FakeProvider:
 
     def generate_image(self, prompt, **kwargs):
         self.calls.append((prompt, kwargs))
-        return ImageResult(image_bytes=b"PNGTHUMB", cost_usd=0.041)
+        return ImageResult(image_bytes=_TINY_PNG, cost_usd=0.041)
 
 
 def _segment(**kwargs):
@@ -176,8 +180,8 @@ def test_generate_thumbnail_uses_unique_object_name(monkeypatch):
         image_client=fake,
     )
     assert names[0].startswith("thumbnail_")
-    assert names[0].endswith(".png")
-    assert names[0] != "thumbnail.png"
+    assert names[0].endswith(".webp")
+    assert names[0] != "thumbnail.webp"
     assert names[0] != names[1]
 
 
@@ -316,6 +320,7 @@ def test_persist_uploaded_thumbnail_saves_uploaded_source():
     assert uploaded[0][1].startswith("cover_")
     assert uploaded[0][1].endswith(".jpg")
     assert uploaded[0][1] != "cover.JPG"
+    assert not uploaded[0][1].endswith(".webp")
 
     with pytest.raises(Exception, match="imagem"):
         persist_uploaded_thumbnail(

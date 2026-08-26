@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from io import BytesIO
 from typing import Any
 from uuid import UUID
 
@@ -127,17 +126,13 @@ def generate_scene_media(
             else:
                 result = client.generate_image(prompt, **generate_kwargs)
 
-        from app.storage import versioned_filename
+        from app.storage import upload_generated_image
 
-        if upload is None:
-            from app.storage import upload_fileobj as upload
-
-        filename = versioned_filename(f"scene_{scene.index:04d}")
-        url = upload(
-            BytesIO(result.image_bytes),
+        url = upload_generated_image(
+            result.image_bytes,
             str(project.id),
-            filename,
-            content_type="image/png",
+            f"scene_{scene.index:04d}",
+            upload=upload,
         )
         scene.media_url = url
         scene.media_type = MediaType.IMAGE

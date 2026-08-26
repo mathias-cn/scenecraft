@@ -11,7 +11,7 @@ WORKDIR /app
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        build-essential libpq-dev ffmpeg curl unzip ca-certificates \
+        build-essential libpq-dev ffmpeg curl unzip ca-certificates libwebp-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip install --no-cache-dir poetry
 

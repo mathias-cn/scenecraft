@@ -152,6 +152,61 @@ def versioned_filename(stem: str, suffix: str = ".png") -> str:
     return f"{base}_{uuid4().hex}{ext.lower()}"
 
 
+GENERATED_WEBP_QUALITY = 82
+GENERATED_WEBP_CONTENT_TYPE = "image/webp"
+
+
+def compress_image(image_bytes: bytes, quality: int = GENERATED_WEBP_QUALITY) -> bytes:
+    """Converte bytes de imagem gerada para WEBP (quality 1–100). Preserva alpha."""
+    if not image_bytes:
+        raise StorageError("imagem vazia para comprimir")
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise StorageError("Pillow não está instalado") from exc
+    try:
+        image = Image.open(BytesIO(image_bytes))
+        image.load()
+    except Exception as exc:
+        raise StorageError(f"não foi possível abrir a imagem gerada: {exc}") from exc
+
+    if image.mode == "P":
+        image = image.convert("RGBA" if "transparency" in image.info else "RGB")
+    elif image.mode in {"LA", "PA"}:
+        image = image.convert("RGBA")
+    elif image.mode == "CMYK":
+        image = image.convert("RGB")
+    elif image.mode not in {"RGB", "RGBA"}:
+        image = image.convert("RGB")
+
+    clamped = max(1, min(int(quality), 100))
+    buffer = BytesIO()
+    image.save(buffer, format="WEBP", quality=clamped, method=6)
+    data = buffer.getvalue()
+    if not data:
+        raise StorageError("compressão WEBP devolveu bytes vazios")
+    return data
+
+
+def upload_generated_image(
+    image_bytes: bytes,
+    project_id: str,
+    stem: str,
+    *,
+    upload=None,
+    quality: int = GENERATED_WEBP_QUALITY,
+) -> str:
+    """Comprime para WEBP e envia ao R2. Não use em uploads do usuário."""
+    webp = compress_image(image_bytes, quality=quality)
+    put = upload or upload_fileobj
+    return put(
+        BytesIO(webp),
+        project_id,
+        versioned_filename(stem, ".webp"),
+        content_type=GENERATED_WEBP_CONTENT_TYPE,
+    )
+
+
 DOWNLOAD_URL_EXPIRES = 3600
 _CDN_HOSTS = frozenset({"cdn.mazting.studio"})
 

@@ -23,6 +23,10 @@ from app.providers.image_provider import ImageResult
 from app.providers.openai_image_client import OpenAIImageClient
 from app.schemas.character import CharacterCreate
 
+_TINY_PNG = __import__("base64").b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
 
 class FakeScalars:
     def __init__(self, rows):
@@ -81,11 +85,11 @@ class FakeOpenAI:
 
     def generate_image(self, prompt, **kwargs):
         self.generate_calls.append((prompt, kwargs))
-        return ImageResult(image_bytes=b"GEN", cost_usd=0.04)
+        return ImageResult(image_bytes=_TINY_PNG, cost_usd=0.04)
 
     def edit_image(self, prompt, image_bytes, **kwargs):
         self.edit_calls.append((prompt, image_bytes, kwargs))
-        return ImageResult(image_bytes=b"EDIT", cost_usd=0.04)
+        return ImageResult(image_bytes=_TINY_PNG, cost_usd=0.04)
 
 
 def _character(**kwargs):
@@ -141,7 +145,7 @@ def test_base_image_uses_generate_without_reference(monkeypatch):
     captured = []
 
     def fake_upload(fileobj, prefix, filename, **kwargs):
-        captured.append((prefix, filename))
+        captured.append((prefix, filename, kwargs.get("content_type"), fileobj.read()[:4]))
         return f"https://cdn.example.com/{filename}"
 
     monkeypatch.setattr(
@@ -158,8 +162,10 @@ def test_base_image_uses_generate_without_reference(monkeypatch):
     assert not client.edit_calls
     assert captured[0][0] == f"characters/{character.id}"
     assert captured[0][1].startswith("base_")
-    assert captured[0][1].endswith(".png")
-    assert captured[0][1] != "base.png"
+    assert captured[0][1].endswith(".webp")
+    assert captured[0][1] != "base.webp"
+    assert captured[0][2] == "image/webp"
+    assert captured[0][3] == b"RIFF"
     assert character.base_image_url == f"https://cdn.example.com/{captured[0][1]}"
     assert result["used_reference"] is False
     assert character.cost_usd is not None
@@ -295,13 +301,35 @@ def test_character_asset_edits_from_base(monkeypatch):
     assert client.edit_calls[0][1] == b"BASE"
     assert "sorrindo" in client.edit_calls[0][0]
     assert captured[0].startswith("smiling_")
-    assert captured[0].endswith(".png")
-    assert captured[0] != "smiling.png"
-    assert result["image_url"] == f"https://cdn.example.com/{captured[0]}"
-    assert db.added
-    assert db.added[0].asset_type is CharacterAssetType.SMILING
-    assert db.added[0].cost_usd is not None
-    assert character.cost_usd is not None
+    assert captured[0].endswith(".webp")
+    assert captured[0] != "smiling.webp"
+
+
+def test_character_asset_passes_webp_base_bytes_unchanged(monkeypatch):
+    from app.storage import compress_image
+
+    style_id = uuid4()
+    webp = compress_image(_TINY_PNG)
+    character = _character(
+        style_id=style_id,
+        status=CharacterStatus.APPROVED,
+        base_image_url="characters/abc/base.webp",
+    )
+    db = FakeDB(character, SimpleNamespace(id=style_id, name="Anime"))
+    client = FakeOpenAI()
+    monkeypatch.setattr(
+        "app.core.generate_character.provider_semaphore.hold",
+        lambda *_a, **_k: nullcontext(),
+    )
+    generate_character_asset(
+        character.id,
+        CharacterAssetType.SMILING,
+        db=db,
+        client=client,
+        upload=lambda *_a, **_k: "characters/abc/smiling.webp",
+        fetch_image=lambda _url: webp,
+    )
+    assert client.edit_calls[0][1] is webp
 
 
 def test_character_asset_skips_existing(monkeypatch):

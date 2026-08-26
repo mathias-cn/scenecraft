@@ -12,6 +12,10 @@ from app.models.scene import Scene
 from app.providers.image_provider import ImageResult
 from app.schemas.project import ProjectCreate
 
+_TINY_PNG = __import__("base64").b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+)
+
 
 class FakeDB:
     def __init__(self, project, scene, extra=None):
@@ -52,11 +56,11 @@ class FakeProvider:
 
     def generate_image(self, prompt, **kwargs):
         self.calls.append((prompt, kwargs))
-        return ImageResult(image_bytes=b"PNG", cost_usd=0.041)
+        return ImageResult(image_bytes=_TINY_PNG, cost_usd=0.041)
 
     def edit_image(self, prompt, image_bytes, **kwargs):
         self.edits.append((prompt, image_bytes, kwargs))
-        return ImageResult(image_bytes=b"EDIT", cost_usd=0.041)
+        return ImageResult(image_bytes=_TINY_PNG, cost_usd=0.041)
 
 
 def _scene_project(provider="openai"):
@@ -128,8 +132,8 @@ def test_generate_scene_media_uses_unique_object_name(monkeypatch):
     generate_scene_media(project.id, scene.id, db=db, upload=fake_upload)
     generate_scene_media(project.id, scene.id, db=db, upload=fake_upload)
     assert names[0].startswith("scene_0000_")
-    assert names[0].endswith(".png")
-    assert names[0] != "scene_0000.png"
+    assert names[0].endswith(".webp")
+    assert names[0] != "scene_0000.webp"
     assert names[0] != names[1]
     assert "scenecraft-media" not in names[0]
 
